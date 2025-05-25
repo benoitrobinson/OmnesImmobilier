@@ -1,0 +1,194 @@
+# ===========================================
+# .gitignore for Omnes Immobilier Project
+# Real Estate Platform - PHP/MySQL/JavaScript
+# ===========================================
+
+# ============================================
+# SENSITIVE CONFIGURATION FILES
+# These contain passwords and API keys
+# ============================================
+config.php
+database_config.php
+.env
+.env.local
+.env.production
+*.config.local.php
+
+# ============================================
+# PHP DEPENDENCIES AND PACKAGE MANAGERS
+# These folders get recreated by composer install
+# ============================================
+/vendor/
+composer.lock
+composer.phar
+
+# ============================================
+# DATABASE FILES
+# Prevent accidental commit of database dumps
+# ============================================
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+/database/backups/
+/dumps/
+
+# ============================================
+# USER UPLOADED CONTENT
+# Property images and documents uploaded by users
+# ============================================
+/uploads/
+/assets/uploads/
+/img/properties/
+/img/profiles/
+/documents/user_uploads/
+*.jpg.backup
+*.png.backup
+
+# ============================================
+# DEVELOPMENT AND IDE FILES
+# Personal editor settings shouldn't affect teammates
+# ============================================
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# PHPStorm / IntelliJ
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Atom
+.atom/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# ============================================
+# OPERATING SYSTEM FILES
+# System files that vary by developer's OS
+# ============================================
+
+# Windows
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Linux
+*~
+.directory
+
+# ============================================
+# TEMPORARY AND CACHE FILES
+# Files generated during development
+# ============================================
+*.tmp
+*.temp
+*.log
+*.cache
+/tmp/
+/temp/
+/cache/
+/logs/
+
+# PHP temporary files
+*.php~
+*.phps
+
+# ============================================
+# FRONTEND DEVELOPMENT FILES
+# If using build tools for CSS/JS optimization
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.npm
+
+# Compiled CSS from preprocessors
+*.css.map
+*.scss.cache
+
+# ============================================
+# SECURITY AND BACKUP FILES
+# Prevent accidental exposure of sensitive data
+# ============================================
+*.key
+*.pem
+*.p12
+*.pfx
+backup_*
+*.backup
+*.bak
+*.old
+
+# ============================================
+# TESTING AND DEVELOPMENT TOOLS
+# Test files and debugging artifacts
+# ============================================
+/tests/coverage/
+phpunit.xml
+.phpunit.result.cache
+/coverage/
+
+# ============================================
+# DEPLOYMENT FILES
+# Files specific to hosting environments
+# ============================================
+.htaccess.local
+.htaccess.backup
+robots.txt.backup
+
+# ============================================
+# DOCUMENTATION BUILD FILES
+# Generated documentation that can be rebuilt
+# ============================================
+/docs/build/
+/docs/generated/
+
+# ============================================
+# PROJECT-SPECIFIC IGNORES
+# Files specific to your real estate platform
+# ============================================
+
+# Agent CV uploads (sensitive personal documents)
+/documents/cv/
+/cv_uploads/
+
+# Property inspection reports
+/reports/inspections/
+/documents/reports/
+
+# Email templates with potential sensitive info
+/templates/emails/*.local.php
+
+# Calendar/scheduling cache files
+/cache/schedules/
+/temp/appointments/
+
+# Payment processing logs (never commit financial data)
+/logs/payments/
+/logs/transactions/
+payment_*.log
