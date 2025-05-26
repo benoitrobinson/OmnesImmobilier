@@ -8,12 +8,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST')
     $password = $_POST['password'] ?? '';
 
     //retrieve user from database
-    $stmt = $pdo ->prepare("SELECT * FROM users WHERE email = ?");
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
-    // Check if user exists and password matches
-    if ($user && password_verify($password, $user['password']))
+    // Check if user exists and password is correct
+    if ($user && password_verify($password, $user['password_hash']))
     {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['first_name'] = $user['first_name'];
