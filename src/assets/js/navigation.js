@@ -413,37 +413,6 @@ function initializeKeyboardNavigation() {
             // Handle tab navigation
             handleTabNavigation(e, focusableElements);
         }
-    });
-}
-
-function handleTabNavigation(e, focusableElements) {
-    const currentIndex = Array.from(focusableElements).indexOf(document.activeElement);
-    
-    if (e.shiftKey) {
-        // Shift + Tab (backward)
-        if (currentIndex <= 0) {
-            e.preventDefault();
-            focusableElements[focusableElements.length - 1].focus();
-        }
-    } else {
-        // Tab (forward)
-        if (currentIndex >= focusableElements.length - 1) {
-            e.preventDefault();
-            focusableElements[0].focus();
-        }
     }
+    );
 }
-
-// Initialize keyboard navigation
-document.addEventListener('DOMContentLoaded', initializeKeyboardNavigation);
-
-// Export functions for use in other scripts
-window.NavigationUtils = {
-    toggleTheme,
-    applyTheme,
-    showNotification,
-    setLoadingState,
-    generateAvatarInitials
-};
-
-console.log('Enhanced Navigation JavaScript loaded successfully');
