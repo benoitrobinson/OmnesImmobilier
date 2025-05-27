@@ -5,7 +5,18 @@ require_once '../includes/functions.php';
 
 // Redirect if already logged in
 if (isLoggedIn()) {
-    redirect('../index.php');
+    $role = $_SESSION['role'];
+    switch ($role) {
+        case 'admin':
+            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            break;
+        case 'agent':
+            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            break;
+        case 'client':
+        default:
+            redirect('../client/dashboard.php');
+    }
 }
 
 $error = '';
@@ -141,11 +152,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     logSecurityEvent('user_registered', 'New user registered: ' . $form_data['email'] . ' (Role: ' . $form_data['role'] . ')');
                 }
 
-                $success = 'Welcome to Omnes Immobilier! Your account has been created successfully.';
-                $form_data = []; // Clear the form data
+                // AUTOMATICALLY LOG IN THE USER AFTER REGISTRATION
+                session_regenerate_id(true); // Prevent session fixation
+                
+                $_SESSION['user_id'] = $user_id;
+                $_SESSION['first_name'] = $form_data['first_name'];
+                $_SESSION['last_name'] = $form_data['last_name'];
+                $_SESSION['email'] = $form_data['email'];
+                $_SESSION['role'] = $form_data['role'];
+                $_SESSION['login_time'] = time();
 
-                // Set success flag for JavaScript
-                $registration_success = true;
+                // Set welcome message
+                $_SESSION['success_message'] = 'Welcome to Omnes Immobilier, ' . $form_data['first_name'] . '! Your account has been created successfully and you are now logged in.';
+
+                // Log successful registration and auto-login
+                if (function_exists('logSecurityEvent')) {
+                    logSecurityEvent('user_auto_login', 'User auto-logged in after registration: ' . $form_data['email']);
+                }
+
+                // Redirect based on user role to their dashboard
+                switch ($form_data['role']) {
+                    case 'agent':
+                        $_SESSION['success_message'] = 'Welcome to Omnes Immobilier, ' . $form_data['first_name'] . '! Your agent account has been created successfully. You can now manage properties and connect with clients.';
+                        redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+                        break;
+                    case 'client':
+                    default:
+                        $_SESSION['success_message'] = 'Welcome to Omnes Immobilier, ' . $form_data['first_name'] . '! Your account has been created successfully. Start exploring our exclusive properties.';
+                        redirect('../client/dashboard.php');
+                        break;
+                }
             }
         } catch (Exception $e) {
             $pdo->rollBack();
@@ -183,8 +219,8 @@ ob_start();
                     <i class="fas fa-check-circle me-2"></i>
                     <?= htmlspecialchars($success) ?>
                     <div class="mt-3">
-                        <a href="login.php" class="btn btn-primary btn-sm">
-                            <i class="fas fa-sign-in-alt me-1"></i>Continue to Login
+                        <a href="../client/dashboard.php" class="btn btn-primary btn-sm">
+                            <i class="fas fa-chart-pie me-1"></i>Go to Dashboard
                         </a>
                     </div>
                 </div>
@@ -373,7 +409,7 @@ ob_start();
                     </a>
                 </p>
                 <p class="mb-0">
-                    <a href="../index.php" class="text-muted text-decoration-none">
+                    <a href="../pages/home.php" class="text-muted text-decoration-none">
                         <i class="fas fa-arrow-left me-1"></i>Return to Homepage
                     </a>
                 </p>

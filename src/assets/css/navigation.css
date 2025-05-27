@@ -1,4 +1,4 @@
-/* Navigation CSS - Transparent with Account Dropdown */
+/* Navigation CSS - Enhanced for Dashboard */
 
 .custom-navbar {
     box-shadow: 0 2px 8px rgba(34,34,34,0.10);
@@ -27,11 +27,6 @@
     box-shadow: 0 2px 8px rgba(34,34,34,0.10) !important;
 }
 
-.navbar.red-bg {
-    background: #ff0000 !important;
-    box-shadow: 0 2px 8px rgba(34,34,34,0.10) !important;
-}
-
 .navbar.scrolled {
     background: rgba(255, 255, 255, 0.95) !important;
     backdrop-filter: blur(10px);
@@ -49,6 +44,11 @@
     object-fit: contain;
 }
 
+/* Remove brand text to show only logo */
+.brand-text {
+    display: none !important;
+}
+
 .navbar-nav {
     list-style: none;
     margin: 0;
@@ -58,10 +58,13 @@
     justify-content: flex-start;
     padding-left: 0;
     padding-right: 0;
+    align-items: center; /* Ensure vertical alignment */
 }
 
 .nav-item {
     position: relative;
+    display: flex;
+    align-items: center;
 }
 
 .nav-link,
@@ -73,23 +76,27 @@
     transition: color 0.2s;
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     margin-right: 10px;
+    height: 48px; /* Fixed height for consistent alignment */
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem !important;
+    border-radius: 8px;
+    margin: 0 0.25rem;
 }
 
 .nav-link:hover,
 .navbar-nav .nav-link:hover {
     color: #bfa133 !important;
     text-decoration: underline;
+    background: rgba(212, 175, 55, 0.1);
+    transform: translateY(-2px);
 }
 
 .navbar-nav .nav-link.active {
     color: #d4af37 !important;
     text-decoration: underline;
-}
-
-/* Remove nav-bg-img-wrapper and nav-bg-img if you do not want a background image in the navbar */
-.nav-bg-img-wrapper,
-.nav-bg-img {
-    display: none;
+    background: rgba(212, 175, 55, 0.2);
+    font-weight: 600;
 }
 
 .container-fluid {
@@ -102,31 +109,50 @@
 
 .collapse.navbar-collapse {
     justify-content: flex-start !important;
+    display: flex;
+    align-items: center;
 }
 
 .ms-auto {
     margin-left: 0 !important;
 }
 
-/* Account Dropdown Styles */
+/* Account Dropdown Styles - Enhanced visibility */
 .account-dropdown .dropdown-toggle::after {
     display: none; /* Hide default Bootstrap arrow */
+}
+
+.account-dropdown-menu {
+    z-index: 10010 !important;
+    min-width: 320px;
+    max-width: 400px;
+    border: none;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.25) !important; /* Stronger shadow for better visibility */
+    border-radius: 16px;
+    padding: 1rem 0;
+    background: white !important;
+    backdrop-filter: blur(20px);
+    margin-top: 8px;
+    /* Better positioning - not too close to edge */
+    transform: translateX(-20px);
+    border: 2px solid rgba(212, 175, 55, 0.2) !important; /* Add subtle border */
+}
+
+/* Dashboard specific dropdown improvements */
+body[data-page="dashboard"] .account-dropdown-menu {
+    background: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;
+    border: 2px solid rgba(212, 175, 55, 0.3) !important;
+    backdrop-filter: blur(25px);
+}
+
+.dropdown-menu {
+    z-index: 10010 !important;
 }
 
 .account-dropdown:hover .dropdown-menu {
     display: block;
     margin-top: 0; /* Remove gap */
-}
-
-.account-dropdown-menu {
-    min-width: 280px;
-    border: none;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-    border-radius: 12px;
-    padding: 0.5rem 0;
-    background: white;
-    backdrop-filter: blur(10px);
-    margin-top: 8px;
 }
 
 .account-dropdown-menu .dropdown-item {
@@ -137,17 +163,19 @@
     align-items: center;
     color: #111 !important;
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: transparent;
 }
 
 .account-dropdown-menu .dropdown-item:hover {
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-    transform: translateX(5px);
-    color: #111 !important;
+    transform: translateX(8px);
+    color: #d4af37 !important;
 }
 
 .account-dropdown-menu .dropdown-item i {
-    width: 20px;
+    width: 24px;
     text-align: center;
+    font-size: 1.1rem;
 }
 
 .account-dropdown-menu .dropdown-header {
@@ -176,10 +204,79 @@
     align-items: flex-start;
 }
 
+/* User Profile Navigation Styling */
+.user-profile-nav {
+    background: rgba(212, 175, 55, 0.1) !important;
+    border: 2px solid transparent;
+    border-radius: 12px !important;
+    padding: 0.5rem 1rem !important;
+    height: 48px !important;
+    display: flex !important;
+    align-items: center;
+}
+
+.user-profile-nav:hover {
+    background: rgba(212, 175, 55, 0.2) !important;
+    border-color: rgba(212, 175, 55, 0.3) !important;
+}
+
+.user-avatar-nav {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 0.8rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.user-info-nav {
+    text-align: left;
+}
+
+.user-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #333;
+    line-height: 1.2;
+}
+
+.user-role {
+    color: #d4af37;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.user-avatar-large {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 1.1rem;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.stat-number {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #d4af37;
+}
+
 /* Smooth animations */
 .account-dropdown-menu {
     opacity: 0;
-    transform: translateY(-10px);
+    transform: translateY(-15px) translateX(-20px) scale(0.95);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     pointer-events: none;
 }
@@ -187,7 +284,7 @@
 .account-dropdown:hover .account-dropdown-menu,
 .account-dropdown .dropdown-menu.show {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) translateX(-20px) scale(1);
     pointer-events: auto;
 }
 
@@ -214,19 +311,21 @@
 @media (max-width: 991.98px) {
     .account-dropdown-menu {
         position: static !important;
-        box-shadow: none;
-        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2) !important;
+        background: rgba(255, 255, 255, 0.98) !important;
         margin: 0.5rem 0;
-        border-radius: 8px;
+        border-radius: 12px;
+        transform: none !important;
+        opacity: 1 !important;
     }
     
     .account-dropdown:hover .dropdown-menu {
         display: none; /* Disable hover on mobile */
     }
     
-    .user-avatar-small {
-        width: 24px;
-        height: 24px;
+    .user-avatar-small, .user-avatar-nav {
+        width: 28px;
+        height: 28px;
         font-size: 0.75rem;
     }
     
@@ -235,11 +334,21 @@
     }
     
     .navbar-collapse {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.95);
         border-radius: 12px;
         margin-top: 1rem;
         padding: 1rem;
         backdrop-filter: blur(15px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+    
+    .user-info-nav {
+        display: none !important;
+    }
+    
+    .navbar-nav .nav-link {
+        height: auto !important;
+        padding: 0.75rem 1rem !important;
     }
 }
 
@@ -252,4 +361,59 @@
 .dropdown-divider {
     margin: 0.5rem 0;
     opacity: 0.1;
+}
+
+/* Dashboard specific styles */
+body[data-page="dashboard"] .navbar {
+    display: none !important; /* Hide navbar completely on dashboard */
+}
+
+/* Ensure all nav items are on same level */
+.navbar-nav.me-auto, 
+.navbar-nav {
+    display: flex;
+    align-items: center;
+    margin: 0;
+}
+
+/* Container alignment improvements */
+.container-fluid {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.navbar-collapse {
+    display: flex;
+    align-items: center;
+}
+
+/* Better dropdown positioning to avoid edge issues */
+@media (min-width: 992px) {
+    .dropdown-menu-end {
+        right: 0;
+        left: auto;
+        transform: translateX(-10px) !important;
+    }
+    
+    .account-dropdown-menu.dropdown-menu-end {
+        transform: translateX(-30px) !important;
+    }
+    
+    .account-dropdown:hover .account-dropdown-menu.dropdown-menu-end,
+    .account-dropdown .dropdown-menu.show.dropdown-menu-end {
+        transform: translateX(-30px) !important;
+    }
+}
+
+/* Ensure dropdown doesn't go off-screen on smaller desktop sizes */
+@media (min-width: 992px) and (max-width: 1200px) {
+    .account-dropdown-menu {
+        transform: translateX(-50px) !important;
+    }
+    
+    .account-dropdown:hover .account-dropdown-menu,
+    .account-dropdown .dropdown-menu.show {
+        transform: translateY(0) translateX(-50px) scale(1) !important;
+    }
 }

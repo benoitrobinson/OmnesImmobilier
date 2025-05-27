@@ -26,7 +26,6 @@ composer.phar
 # DATABASE FILES
 # Prevent accidental commit of database dumps
 # ============================================
-*.sql
 *.db
 *.sqlite
 *.sqlite3

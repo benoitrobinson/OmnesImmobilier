@@ -13,7 +13,7 @@ if ($isMac) {
     $password = 'root'; // MAMP default password
 } elseif ($isWindows) {
     $host = 'localhost';
-    $port = '3306'; // WAMP default port
+    $port = '6969'; // WAMP default port
     $username = 'root';
     $password = ''; // WAMP default password
 } else {
@@ -32,10 +32,6 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     
-    // Only show this message in development
-    if (defined('DEVELOPMENT_MODE') && DEVELOPMENT_MODE) {
-        echo "Connected successfully to the database on " . PHP_OS . "<br>";
-    }
 } catch (PDOException $e) {
     error_log("Database connection failed: " . $e->getMessage());
     die("Connection failed. Please try again later.");
