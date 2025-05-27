@@ -54,8 +54,8 @@ session_start();
             </h2>
         </div>
 
-        <!-- Cimalpes-inspired Event 1: Images left, text right -->
-        <section class="cimalpes-event-section">
+        <!-- All events centered (default layout) -->
+        <section class="cimalpes-event-section" style="margin: 0 auto 32px auto;">
             <div class="cimalpes-event-images">
                 <img src="../assets/images/event1.png" alt="Event 1 Main" class="cimalpes-event-img-main">
                 <img src="../assets/images/event1.png" alt="Event 1 Secondary" class="cimalpes-event-img-secondary">
@@ -75,8 +75,7 @@ session_start();
             </div>
         </section>
 
-        <!-- Cimalpes-inspired Event 2: Images right, text left -->
-        <section class="cimalpes-event-section" style="flex-direction: row-reverse;">
+        <section class="cimalpes-event-section" style="margin: 0 auto 32px auto;">
             <div class="cimalpes-event-images">
                 <img src="../assets/images/event2.png" alt="Event 2 Main" class="cimalpes-event-img-main">
                 <img src="../assets/images/event2.png" alt="Event 2 Secondary" class="cimalpes-event-img-secondary">
@@ -91,6 +90,26 @@ session_start();
                     <p>Learn about real estate investment opportunities with our financial experts. Perfect for first-time investors and experienced professionals.</p>
                 </div>
                 <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('investment-seminar')">
+                    <i class="fas fa-info-circle me-1"></i>See Details
+                </button>
+            </div>
+        </section>
+
+        <section class="cimalpes-event-section" style="margin: 0 auto 32px auto;">
+            <div class="cimalpes-event-images">
+                <img src="../assets/images/event3.png" alt="Event 3 Main" class="cimalpes-event-img-main">
+                <img src="../assets/images/event3.png" alt="Event 3 Secondary" class="cimalpes-event-img-secondary">
+            </div>
+            <div class="cimalpes-event-content">
+                <div class="cimalpes-event-title">🏢 Commercial Property Tour</div>
+                <div class="cimalpes-event-meta">
+                    <span><span class="icon">📅</span>Friday, 3pm-6pm</span>
+                    <span><span class="icon">📍</span>Business District</span>
+                </div>
+                <div class="cimalpes-event-description">
+                    <p>Discover the best commercial properties available for your business. Guided tours and expert advice from our commercial team.</p>
+                </div>
+                <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('commercial-tour')">
                     <i class="fas fa-info-circle me-1"></i>See Details
                 </button>
             </div>
@@ -238,6 +257,12 @@ session_start();
                     description: 'Learn the fundamentals of real estate investment with our expert financial advisors. Perfect for both beginners and experienced investors.',
                     features: ['Expert speakers', 'Investment strategies', 'Market analysis', 'Q&A session'],
                     contact: 'Register: seminars@omnes-immobilier.com'
+                },
+                'commercial-tour': {
+                    title: 'Commercial Property Tour',
+                    description: 'Discover the best commercial properties available for your business. Guided tours and expert advice from our commercial team.',
+                    features: ['Business locations', 'Expert guidance', 'Networking opportunities', 'On-site Q&A'],
+                    contact: 'Contact: business@omnes-immobilier.com'
                 }
             };
 
@@ -266,91 +291,5 @@ session_start();
             });
         });
     </script>
-
-    <!-- Additional styles for enhanced home page -->
-    <style>
-        .quick-action-card {
-            text-align: center;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-            background: white;
-            border: 1px solid rgba(212, 175, 55, 0.1);
-        }
-
-        .quick-action-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-        }
-
-        .quick-action-icon {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1rem;
-            color: white;
-            font-size: 1.5rem;
-        }
-
-        .welcome-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .author-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            margin-right: 0.75rem;
-        }
-
-        .testimonial-author {
-            display: flex;
-            align-items: center;
-        }
-
-        .contact-actions {
-            display: flex;
-            gap: 0.5rem;
-            justify-content: center;
-        }
-
-        .events-section {
-            padding: 3rem 0;
-        }
-
-        .cimalpes-event-description {
-            margin: 1rem 0;
-            color: #6c757d;
-        }
-
-        @media (max-width: 768px) {
-            .welcome-actions {
-                flex-direction: column;
-                align-items: center;
-            }
-
-            .contact-actions {
-                flex-direction: column;
-            }
-
-            .quick-action-card {
-                margin-bottom: 1rem;
-            }
-        }
-    </style>
 </body>
 </html>
