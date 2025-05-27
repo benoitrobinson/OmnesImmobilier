@@ -10,7 +10,7 @@ CREATE TABLE users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('admin', 'client', 'agent') NOT NULL DEFAULT 'client',
-    phone VARCHAR(15) NOT NULL,
+    phone VARCHAR(10) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

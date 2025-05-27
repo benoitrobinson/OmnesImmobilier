@@ -11,7 +11,7 @@ if (isLoggedIn()) {
             redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
             break;
         case 'agent':
-            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
             break;
         case 'client':
         default:
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         break;
                     case 'agent':
                         $_SESSION['success_message'] = 'Welcome back, ' . $user['first_name'] . '! Ready to manage your properties?';
-                        redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+                        redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
                         break;
                     case 'client':
                     default:

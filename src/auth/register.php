@@ -11,7 +11,7 @@ if (isLoggedIn()) {
             redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
             break;
         case 'agent':
-            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
             break;
         case 'client':
         default:
@@ -174,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 switch ($form_data['role']) {
                     case 'agent':
                         $_SESSION['success_message'] = 'Welcome to Omnes Immobilier, ' . $form_data['first_name'] . '! Your agent account has been created successfully. You can now manage properties and connect with clients.';
-                        redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+                        redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
                         break;
                     case 'client':
                     default:

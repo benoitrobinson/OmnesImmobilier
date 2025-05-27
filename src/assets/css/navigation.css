@@ -1,5 +1,21 @@
 /* Navigation CSS - Enhanced for Dashboard */
 
+/* IMMEDIATE DROPDOWN FIX */
+.navbar, .container-fluid, .navbar-collapse, .account-dropdown {
+    overflow: visible !important;
+}
+
+.account-dropdown-menu {
+    position: absolute !important;
+    top: 100% !important;
+    right: 0 !important;
+    z-index: 10060 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin-top: 12px !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3) !important;
+}
+
 .custom-navbar {
     box-shadow: 0 2px 8px rgba(34,34,34,0.10);
     font-size: 1.1rem;

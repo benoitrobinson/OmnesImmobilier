@@ -11,8 +11,17 @@ if (!isLoggedIn()) {
 $database = Database::getInstance();
 $db = $database->getConnection();
 
+// Initialize variables to prevent warnings
 $error = '';
 $success = '';
+
+// Initialize stats array with default values
+$stats = [
+    'total_appointments' => 0,
+    'confirmed_appointments' => 0,
+    'properties_viewed' => 0,
+    'favorites' => 0
+];
 
 // Get complete user information
 $query = "SELECT u.*, a.cv_file_path, a.profile_picture_path, a.agency_name 
@@ -24,7 +33,7 @@ $stmt->bindParam(':user_id', $_SESSION['user_id']);
 $stmt->execute();
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get user preferences
+// Get user preferences with default values
 $user_prefs = [
     'theme' => $_SESSION['user_theme'] ?? 'light',
     'language' => $_SESSION['user_language'] ?? 'en',
@@ -39,16 +48,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     if ($action === 'update_profile') {
         // Validation and cleaning of input data
-        $first_name = trim($_POST['first_name']);
-        $last_name = trim($_POST['last_name']);
-        $phone = trim($_POST['phone']);
-        $new_email = trim($_POST['email']);
+        $first_name = trim($_POST['first_name'] ?? '');
+        $last_name = trim($_POST['last_name'] ?? '');
+        $phone = trim($_POST['phone'] ?? '');
+        $new_email = trim($_POST['email'] ?? '');
         
         // Validation of required fields
         if (empty($first_name) || empty($last_name)) {
             $error = 'First name and last name are required.';
         } elseif (!filter_var($new_email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
+        } elseif (!empty($phone) && strlen($phone) > 15) {
+            $error = 'Phone number is too long (maximum 15 characters).';
         } else {
             // Check if email is already taken by another user
             if ($new_email !== $user['email']) {
@@ -64,71 +75,134 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
             
             if (empty($error)) {
-                // Update user information
-                $update_query = "UPDATE users SET 
-                               first_name = :first_name, last_name = :last_name, 
-                               email = :email, phone = :phone,
-                               updated_at = CURRENT_TIMESTAMP
-                               WHERE id = :user_id";
-                
-                $update_stmt = $db->prepare($update_query);
-                $update_stmt->bindParam(':first_name', $first_name);
-                $update_stmt->bindParam(':last_name', $last_name);
-                $update_stmt->bindParam(':email', $new_email);
-                $update_stmt->bindParam(':phone', $phone);
-                $update_stmt->bindParam(':user_id', $_SESSION['user_id']);
-                
-                if ($update_stmt->execute()) {
-                    // Update session variables
-                    $_SESSION['first_name'] = $first_name;
-                    $_SESSION['last_name'] = $last_name;
-                    $_SESSION['email'] = $new_email;
+                try {
+                    // Check if updated_at column exists
+                    $columns_query = "SHOW COLUMNS FROM users LIKE 'updated_at'";
+                    $columns_stmt = $db->prepare($columns_query);
+                    $columns_stmt->execute();
+                    $has_updated_at = $columns_stmt->rowCount() > 0;
                     
-                    $success = 'Profile updated successfully!';
+                    // Update user information
+                    if ($has_updated_at) {
+                        $update_query = "UPDATE users SET 
+                                       first_name = :first_name, 
+                                       last_name = :last_name, 
+                                       email = :email, 
+                                       phone = :phone,
+                                       updated_at = CURRENT_TIMESTAMP
+                                       WHERE id = :user_id";
+                    } else {
+                        $update_query = "UPDATE users SET 
+                                       first_name = :first_name, 
+                                       last_name = :last_name, 
+                                       email = :email, 
+                                       phone = :phone
+                                       WHERE id = :user_id";
+                    }
                     
-                    // Reload user data
-                    $stmt->execute();
-                    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-                } else {
-                    $error = 'Error updating profile.';
+                    $update_stmt = $db->prepare($update_query);
+                    $update_stmt->bindParam(':first_name', $first_name);
+                    $update_stmt->bindParam(':last_name', $last_name);
+                    $update_stmt->bindParam(':email', $new_email);
+                    $update_stmt->bindParam(':phone', $phone);
+                    $update_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                    
+                    if ($update_stmt->execute()) {
+                        // Update session variables
+                        $_SESSION['first_name'] = $first_name;
+                        $_SESSION['last_name'] = $last_name;
+                        $_SESSION['email'] = $new_email;
+                        
+                        $success = 'Profile updated successfully!';
+                        
+                        // Reload user data
+                        $stmt->execute();
+                        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                    } else {
+                        $error = 'Error updating profile. Please try again.';
+                    }
+                } catch (PDOException $e) {
+                    error_log("Profile update error: " . $e->getMessage());
+                    $error = 'Database error occurred. Please try again.';
                 }
             }
         }
     }
     
     elseif ($action === 'update_preferences') {
-        $theme = $_POST['theme'] ?? 'light';
-        $language = $_POST['language'] ?? 'en';
-        $notifications_email = isset($_POST['notifications_email']) ? 1 : 0;
-        $notifications_sms = isset($_POST['notifications_sms']) ? 1 : 0;
-        $marketing_emails = isset($_POST['marketing_emails']) ? 1 : 0;
-        
-        // Update session preferences
-        $_SESSION['user_theme'] = $theme;
-        $_SESSION['user_language'] = $language;
-        $_SESSION['notifications_email'] = $notifications_email;
-        $_SESSION['notifications_sms'] = $notifications_sms;
-        $_SESSION['marketing_emails'] = $marketing_emails;
-        
-        // Update user preferences array
-        $user_prefs = [
-            'theme' => $theme,
-            'language' => $language,
-            'notifications_email' => $notifications_email,
-            'notifications_sms' => $notifications_sms,
-            'marketing_emails' => $marketing_emails
-        ];
-        
-        // You could also save these to database in a user_preferences table
-        // For now, we'll just use session storage
-        
-        $success = 'Preferences updated successfully!';
+        try {
+            $theme = $_POST['theme'] ?? 'light';
+            $language = $_POST['language'] ?? 'en';
+            $notifications_email = isset($_POST['notifications_email']) ? 1 : 0;
+            $notifications_sms = isset($_POST['notifications_sms']) ? 1 : 0;
+            $marketing_emails = isset($_POST['marketing_emails']) ? 1 : 0;
+            
+            // Validate inputs
+            if (!in_array($theme, ['light', 'dark'])) {
+                $theme = 'light';
+            }
+            if (!in_array($language, ['en', 'fr', 'es'])) {
+                $language = 'en';
+            }
+            
+            // Update session preferences
+            $_SESSION['user_theme'] = $theme;
+            $_SESSION['user_language'] = $language;
+            $_SESSION['notifications_email'] = $notifications_email;
+            $_SESSION['notifications_sms'] = $notifications_sms;
+            $_SESSION['marketing_emails'] = $marketing_emails;
+            
+            // Update user preferences array
+            $user_prefs = [
+                'theme' => $theme,
+                'language' => $language,
+                'notifications_email' => $notifications_email,
+                'notifications_sms' => $notifications_sms,
+                'marketing_emails' => $marketing_emails
+            ];
+            
+            // Save to user_preferences table if it exists
+            try {
+                // Check if user_preferences table exists
+                $table_check = "SHOW TABLES LIKE 'user_preferences'";
+                $table_stmt = $db->prepare($table_check);
+                $table_stmt->execute();
+                
+                if ($table_stmt->rowCount() > 0) {
+                    // Save theme preference
+                    $pref_query = "INSERT INTO user_preferences (user_id, preference_key, preference_value) 
+                                  VALUES (:user_id, 'theme', :theme)
+                                  ON DUPLICATE KEY UPDATE preference_value = :theme";
+                    $pref_stmt = $db->prepare($pref_query);
+                    $pref_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                    $pref_stmt->bindParam(':theme', $theme);
+                    $pref_stmt->execute();
+                    
+                    // Save language preference
+                    $lang_query = "INSERT INTO user_preferences (user_id, preference_key, preference_value) 
+                                  VALUES (:user_id, 'language', :language)
+                                  ON DUPLICATE KEY UPDATE preference_value = :language";
+                    $lang_stmt = $db->prepare($lang_query);
+                    $lang_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                    $lang_stmt->bindParam(':language', $language);
+                    $lang_stmt->execute();
+                }
+            } catch (Exception $e) {
+                error_log("Preferences save error: " . $e->getMessage());
+                // Continue anyway, session storage works
+            }
+            
+            $success = 'Preferences updated successfully!';
+        } catch (Exception $e) {
+            error_log("Preferences update error: " . $e->getMessage());
+            $error = 'Error updating preferences. Please try again.';
+        }
     }
     
     elseif ($action === 'change_password') {
-        $current_password = $_POST['current_password'];
-        $new_password = $_POST['new_password'];
-        $confirm_password = $_POST['confirm_password'];
+        $current_password = $_POST['current_password'] ?? '';
+        $new_password = $_POST['new_password'] ?? '';
+        $confirm_password = $_POST['confirm_password'] ?? '';
         
         // Verify current password
         if (!password_verify($current_password, $user['password_hash'])) {
@@ -138,64 +212,71 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } elseif ($new_password !== $confirm_password) {
             $error = 'New passwords do not match.';
         } else {
-            // Hash new password with bcrypt
-            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-            
-            $password_query = "UPDATE users SET password_hash = :password WHERE id = :user_id";
-            $password_stmt = $db->prepare($password_query);
-            $password_stmt->bindParam(':password', $hashed_password);
-            $password_stmt->bindParam(':user_id', $_SESSION['user_id']);
-            
-            if ($password_stmt->execute()) {
-                $success = 'Password changed successfully!';
-            } else {
-                $error = 'Error changing password.';
+            try {
+                // Hash new password
+                $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+                
+                $password_query = "UPDATE users SET password_hash = :password WHERE id = :user_id";
+                $password_stmt = $db->prepare($password_query);
+                $password_stmt->bindParam(':password', $hashed_password);
+                $password_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                
+                if ($password_stmt->execute()) {
+                    $success = 'Password changed successfully!';
+                } else {
+                    $error = 'Error changing password. Please try again.';
+                }
+            } catch (PDOException $e) {
+                error_log("Password change error: " . $e->getMessage());
+                $error = 'Database error occurred. Please try again.';
             }
         }
     }
     
     elseif ($action === 'delete_account') {
-        $confirm_password = $_POST['delete_password'];
+        $confirm_password = $_POST['delete_password'] ?? '';
         
         if (!password_verify($confirm_password, $user['password_hash'])) {
             $error = 'Password confirmation failed. Account deletion cancelled.';
         } else {
-            // In a real application, you might want to soft delete or archive the account
-            // For now, we'll just show a message
             $error = 'Account deletion feature is currently under maintenance. Please contact support.';
         }
     }
 }
 
-// Get user statistics
-$stats = [
-    'total_appointments' => 0,
-    'confirmed_appointments' => 0,
-    'properties_viewed' => 0,
-    'favorites' => 0
-];
-
+// Get user statistics safely
 try {
-    if (isClient()) {
+    if (function_exists('isClient') && isClient()) {
         $stats_query = "SELECT 
-                       (SELECT COUNT(*) FROM appointments WHERE client_id = :user_id) as total_appointments,
-                       (SELECT COUNT(*) FROM appointments WHERE client_id = :user_id AND status = 'scheduled') as confirmed_appointments
-                       ";
+                       COUNT(*) as total_appointments
+                       FROM appointments WHERE client_id = :user_id";
         $stats_stmt = $db->prepare($stats_query);
         $stats_stmt->bindParam(':user_id', $_SESSION['user_id']);
         $stats_stmt->execute();
-        $user_stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
-        if ($user_stats) {
-            $stats = array_merge($stats, $user_stats);
+        $total_result = $stats_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $confirmed_query = "SELECT COUNT(*) as confirmed_appointments
+                           FROM appointments WHERE client_id = :user_id AND status = 'scheduled'";
+        $confirmed_stmt = $db->prepare($confirmed_query);
+        $confirmed_stmt->bindParam(':user_id', $_SESSION['user_id']);
+        $confirmed_stmt->execute();
+        $confirmed_result = $confirmed_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($total_result) {
+            $stats['total_appointments'] = (int)$total_result['total_appointments'];
+        }
+        if ($confirmed_result) {
+            $stats['confirmed_appointments'] = (int)$confirmed_result['confirmed_appointments'];
         }
     }
 } catch (Exception $e) {
     error_log("Stats error: " . $e->getMessage());
+    // Keep default stats values
 }
 ?>
 
 <!DOCTYPE html>
-<html lang="en" data-theme="<?= $user_prefs['theme'] ?>">
+<html lang="en" data-theme="<?= htmlspecialchars($user_prefs['theme']) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -205,10 +286,6 @@ try {
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Base CSS -->
-    <link href="../assets/css/style.css" rel="stylesheet">
-    <!-- Dashboard CSS -->
-    <link href="../assets/css/dashboard.css" rel="stylesheet">
     
     <style>
         /* Theme Variables */
@@ -220,6 +297,7 @@ try {
             --text-secondary: #6c757d;
             --border-color: #dee2e6;
             --card-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            --primary-color: #d4af37;
         }
 
         [data-theme="dark"] {
@@ -246,7 +324,7 @@ try {
         }
 
         .settings-header {
-            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, #f4d03f 100%);
             color: white;
             padding: 2rem;
             border-radius: 20px;
@@ -301,17 +379,18 @@ try {
             color: var(--text-primary);
             transition: all 0.3s ease;
             font-size: 1rem;
+            width: 100%;
         }
 
         .form-control-custom:focus {
-            border-color: #d4af37;
+            border-color: var(--primary-color);
             box-shadow: 0 0 0 0.25rem rgba(212, 175, 55, 0.15);
             background: var(--bg-primary);
             outline: none;
         }
 
         .btn-luxury {
-            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            background: linear-gradient(135deg, var(--primary-color) 0%, #f4d03f 100%);
             border: none;
             color: white;
             padding: 0.75rem 2rem;
@@ -320,6 +399,7 @@ try {
             transition: all 0.3s ease;
             text-decoration: none;
             display: inline-block;
+            cursor: pointer;
         }
 
         .btn-luxury:hover {
@@ -395,7 +475,7 @@ try {
         }
 
         input:checked + .slider {
-            background-color: #d4af37;
+            background-color: var(--primary-color);
         }
 
         input:checked + .slider:before {
@@ -420,12 +500,12 @@ try {
         }
 
         .theme-option:hover {
-            border-color: #d4af37;
+            border-color: var(--primary-color);
             transform: translateY(-3px);
         }
 
         .theme-option.active {
-            border-color: #d4af37;
+            border-color: var(--primary-color);
             background: rgba(212, 175, 55, 0.1);
         }
 
@@ -466,7 +546,7 @@ try {
         .stat-number {
             font-size: 2rem;
             font-weight: 700;
-            color: #d4af37;
+            color: var(--primary-color);
             margin-bottom: 0.5rem;
         }
 
@@ -474,35 +554,6 @@ try {
             color: var(--text-secondary);
             font-size: 0.9rem;
         }
-
-        .danger-zone {
-            background: rgba(220, 53, 69, 0.1);
-            border: 1px solid rgba(220, 53, 69, 0.2);
-            border-radius: 12px;
-            padding: 2rem;
-            margin-top: 2rem;
-        }
-
-        .password-strength {
-            margin-top: 0.5rem;
-        }
-
-        .strength-bar {
-            height: 4px;
-            border-radius: 2px;
-            background: var(--border-color);
-            overflow: hidden;
-        }
-
-        .strength-fill {
-            height: 100%;
-            transition: all 0.3s ease;
-            border-radius: 2px;
-        }
-
-        .strength-weak { background: #dc3545; }
-        .strength-medium { background: #ffc107; }
-        .strength-strong { background: #28a745; }
 
         .breadcrumb-custom {
             background: transparent;
@@ -535,7 +586,7 @@ try {
     </style>
 </head>
 <body data-user-logged-in="true">
-    <!-- Include Enhanced Navigation -->
+    <!-- Include Navigation -->
     <?php include '../includes/navigation.php'; ?>
 
     <div class="settings-container">
@@ -564,14 +615,14 @@ try {
         </div>
 
         <!-- Status Messages -->
-        <?php if ($error): ?>
+        <?php if (!empty($error)): ?>
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                 <i class="fas fa-exclamation-triangle me-2"></i><?= htmlspecialchars($error) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
         
-        <?php if ($success): ?>
+        <?php if (!empty($success)): ?>
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <i class="fas fa-check-circle me-2"></i><?= htmlspecialchars($success) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -581,15 +632,15 @@ try {
         <!-- Quick Stats -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-number"><?= $stats['total_appointments'] ?></div>
+                <div class="stat-number"><?= htmlspecialchars($stats['total_appointments']) ?></div>
                 <div class="stat-label">Total Appointments</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number"><?= $stats['confirmed_appointments'] ?></div>
+                <div class="stat-number"><?= htmlspecialchars($stats['confirmed_appointments']) ?></div>
                 <div class="stat-label">Confirmed</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number"><?= $stats['favorites'] ?></div>
+                <div class="stat-number"><?= htmlspecialchars($stats['favorites']) ?></div>
                 <div class="stat-label">Favorites</div>
             </div>
             <div class="stat-card">
@@ -614,14 +665,14 @@ try {
                                     <div class="form-group-custom">
                                         <label class="form-label-custom" for="first_name">First Name *</label>
                                         <input type="text" class="form-control-custom" id="first_name" name="first_name" 
-                                               value="<?= htmlspecialchars($user['first_name']) ?>" required>
+                                               value="<?= htmlspecialchars($user['first_name'] ?? '') ?>" required>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-group-custom">
                                         <label class="form-label-custom" for="last_name">Last Name *</label>
                                         <input type="text" class="form-control-custom" id="last_name" name="last_name" 
-                                               value="<?= htmlspecialchars($user['last_name']) ?>" required>
+                                               value="<?= htmlspecialchars($user['last_name'] ?? '') ?>" required>
                                     </div>
                                 </div>
                             </div>
@@ -629,7 +680,7 @@ try {
                             <div class="form-group-custom">
                                 <label class="form-label-custom" for="email">Email Address *</label>
                                 <input type="email" class="form-control-custom" id="email" name="email"
-                                       value="<?= htmlspecialchars($user['email']) ?>" required>
+                                       value="<?= htmlspecialchars($user['email'] ?? '') ?>" required>
                                 <small class="text-muted">Changing your email will require verification</small>
                             </div>
                             
@@ -748,12 +799,7 @@ try {
                             <div class="form-group-custom">
                                 <label class="form-label-custom" for="new_password">New Password *</label>
                                 <input type="password" class="form-control-custom" id="new_password" name="new_password" required>
-                                <div class="password-strength">
-                                    <div class="strength-bar">
-                                        <div class="strength-fill" id="strengthFill" style="width: 0%;"></div>
-                                    </div>
-                                    <small id="strengthText" class="text-muted">Enter a password to see strength</small>
-                                </div>
+                                <small class="text-muted">Password must be at least 8 characters long</small>
                             </div>
                             
                             <div class="form-group-custom">
@@ -783,9 +829,6 @@ try {
                             <a href="dashboard.php?section=appointments" class="btn btn-outline-success">
                                 <i class="fas fa-calendar-alt me-2"></i>My Appointments
                             </a>
-                            <a href="dashboard.php?section=favorites" class="btn btn-outline-danger">
-                                <i class="fas fa-heart me-2"></i>My Favorites
-                            </a>
                             <a href="../pages/explore.php" class="btn btn-outline-warning">
                                 <i class="fas fa-search me-2"></i>Browse Properties
                             </a>
@@ -801,10 +844,10 @@ try {
                     <div class="card-body-custom">
                         <div class="text-center mb-3">
                             <div class="user-avatar-large mx-auto mb-3" style="width: 80px; height: 80px; background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.5rem;">
-                                <?= strtoupper(substr($user['first_name'], 0, 1) . substr($user['last_name'], 0, 1)) ?>
+                                <?= strtoupper(substr($user['first_name'] ?? 'U', 0, 1) . substr($user['last_name'] ?? 'U', 0, 1)) ?>
                             </div>
-                            <h5><?= htmlspecialchars($user['first_name'] . ' ' . $user['last_name']) ?></h5>
-                            <p class="text-muted"><?= ucfirst($user['role']) ?> Member</p>
+                            <h5><?= htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?></h5>
+                            <p class="text-muted"><?= ucfirst($user['role'] ?? 'Member') ?></p>
                         </div>
                         
                         <div class="text-center">
@@ -815,63 +858,12 @@ try {
                         </div>
                     </div>
                 </div>
-
-                <!-- Danger Zone -->
-                <div class="settings-card">
-                    <div class="card-header-custom text-danger">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Danger Zone
-                    </div>
-                    <div class="card-body-custom">
-                        <div class="danger-zone">
-                            <h6 class="text-danger mb-3">Delete Account</h6>
-                            <p class="text-muted small mb-3">
-                                Once you delete your account, there is no going back. Please be certain.
-                            </p>
-                            <button type="button" class="btn-danger-custom" data-bs-toggle="modal" data-bs-target="#deleteModal">
-                                <i class="fas fa-trash me-2"></i>Delete Account
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Delete Account Modal -->
-    <div class="modal fade" id="deleteModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title text-danger">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Delete Account
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <form method="POST" action="">
-                    <div class="modal-body">
-                        <input type="hidden" name="action" value="delete_account">
-                        <div class="alert alert-danger">
-                            <strong>Warning!</strong> This action cannot be undone. All your data will be permanently deleted.
-                        </div>
-                        <div class="form-group-custom">
-                            <label class="form-label-custom" for="delete_password">Enter your password to confirm:</label>
-                            <input type="password" class="form-control-custom" id="delete_password" name="delete_password" required>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn-danger-custom">
-                            <i class="fas fa-trash me-2"></i>Delete Account
-                        </button>
-                    </div>
-                </form>
             </div>
         </div>
     </div>
 
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script src="../assets/js/navigation.js"></script>
 
     <script>
         // Theme selection
@@ -880,58 +872,25 @@ try {
             document.querySelectorAll('.theme-option').forEach(option => {
                 option.classList.remove('active');
             });
-            event.currentTarget.classList.add('active');
+            
+            // Find and activate the selected theme option
+            const selectedOption = document.querySelector(`.theme-option input[value="${theme}"]`).closest('.theme-option');
+            if (selectedOption) {
+                selectedOption.classList.add('active');
+            }
             
             // Update radio button
-            document.querySelector(`input[name="theme"][value="${theme}"]`).checked = true;
+            const radioBtn = document.querySelector(`input[name="theme"][value="${theme}"]`);
+            if (radioBtn) {
+                radioBtn.checked = true;
+            }
             
             // Apply theme immediately
             document.documentElement.setAttribute('data-theme', theme);
             
-            // Update navigation theme
-            updateThemeIcon(theme);
-            updateThemeStatus(theme);
-            
             // Save to localStorage
             localStorage.setItem('userTheme', theme);
         }
-
-        // Password strength checker
-        document.getElementById('new_password').addEventListener('input', function() {
-            const password = this.value;
-            const strengthFill = document.getElementById('strengthFill');
-            const strengthText = document.getElementById('strengthText');
-            
-            let strength = 0;
-            let feedback = '';
-            
-            if (password.length >= 8) strength += 25;
-            if (password.match(/[a-z]/)) strength += 25;
-            if (password.match(/[A-Z]/)) strength += 25;
-            if (password.match(/[0-9]/)) strength += 25;
-            if (password.match(/[^A-Za-z0-9]/)) strength += 25;
-            
-            strengthFill.style.width = Math.min(strength, 100) + '%';
-            
-            if (strength < 50) {
-                strengthFill.className = 'strength-fill strength-weak';
-                feedback = 'Weak password';
-            } else if (strength < 75) {
-                strengthFill.className = 'strength-fill strength-medium';
-                feedback = 'Medium strength';
-            } else {
-                strengthFill.className = 'strength-fill strength-strong';
-                feedback = 'Strong password';
-            }
-            
-            strengthText.textContent = password.length > 0 ? feedback : 'Enter a password to see strength';
-        });
-
-        // Auto-save preferences on change
-        document.getElementById('preferencesForm').addEventListener('change', function() {
-            // You could implement auto-save here
-            console.log('Preferences changed');
-        });
 
         // Password confirmation validation
         document.getElementById('confirm_password').addEventListener('input', function() {
@@ -948,8 +907,10 @@ try {
         // Initialize theme on page load
         document.addEventListener('DOMContentLoaded', function() {
             const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-            updateThemeIcon(currentTheme);
-            updateThemeStatus(currentTheme);
+            const savedTheme = localStorage.getItem('userTheme');
+            if (savedTheme && savedTheme !== currentTheme) {
+                selectTheme(savedTheme);
+            }
         });
     </script>
 </body>
