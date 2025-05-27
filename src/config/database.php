@@ -13,7 +13,7 @@ if ($isMac) {
     $password = 'root'; // MAMP default password
 } elseif ($isWindows) {
     $host = 'localhost';
-    $port = '6969'; // WAMP default port
+    $port = '3306'; // WAMP default port
     $username = 'root';
     $password = ''; // WAMP default password
 } else {
