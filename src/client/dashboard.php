@@ -1,5 +1,9 @@
 <?php
 session_start();
+
+// Define development mode (you can set this to false in production)
+define('DEVELOPMENT_MODE', true);
+
 require_once '../config/database.php';
 require_once '../includes/functions.php';
 
@@ -8,9 +12,11 @@ if (!isLoggedIn()) {
     redirect('../auth/login.php');
 }
 
-// Use the global PDO connection from database.php
+$error = '';
+$user_data = [];
+
+// Get user information - FIXED QUERY to match your database schema
 try {
-    // Get user information - FIXED QUERY to match your database schema
     $query = "SELECT u.*, a.cv_file_path, a.profile_picture_path, a.agency_name 
               FROM users u 
               LEFT JOIN agents a ON u.id = a.user_id 
@@ -203,7 +209,10 @@ if (empty($favorite_properties)) {
     <!-- Dashboard Specific CSS -->
     <link href="../assets/css/dashboard.css" rel="stylesheet">
 </head>
-<body>
+<body style="padding-top: 70px;">
+    <!-- Include Navigation -->
+    <?php include '../includes/navigation.php'; ?>
+
     <!-- Header -->
     <header class="luxury-header">
         <div class="container">
@@ -251,7 +260,7 @@ if (empty($favorite_properties)) {
         <?php endif; ?>
 
         <!-- Error Message -->
-        <?php if (isset($error)): ?>
+        <?php if (!empty($error)): ?>
             <div class="alert alert-warning alert-dismissible fade show" role="alert">
                 <i class="fas fa-exclamation-triangle me-2"></i>
                 <?= htmlspecialchars($error) ?>

@@ -149,4 +149,194 @@ function logSecurityEvent($event, $details = '') {
     // In a real application, you'd write this to a log file or database
     error_log('SECURITY: ' . json_encode($log_entry));
 }
+
+/**
+ * Check if current user is a client
+ * @return bool
+ */
+function isClient() {
+    return isLoggedIn() && isset($_SESSION['role']) && $_SESSION['role'] === 'client';
+}
+
+/**
+ * Check if current user is an agent
+ * @return bool
+ */
+function isAgent() {
+    return isLoggedIn() && isset($_SESSION['role']) && $_SESSION['role'] === 'agent';
+}
+
+/**
+ * Check if current user is an admin
+ * @return bool
+ */
+function isAdmin() {
+    return isLoggedIn() && isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+}
+
+/**
+ * Sanitize input data
+ * @param string $data
+ * @return string
+ */
+function sanitizeInput($data) {
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
+}
+
+/**
+ * Validate email address
+ * @param string $email
+ * @return bool
+ */
+function validateEmail($email) {
+    return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+}
+
+/**
+ * Generate secure password hash
+ * @param string $password
+ * @return string
+ */
+function hashPassword($password) {
+    return password_hash($password, PASSWORD_DEFAULT);
+}
+
+/**
+ * Verify password against hash
+ * @param string $password
+ * @param string $hash
+ * @return bool
+ */
+function verifyPassword($password, $hash) {
+    return password_verify($password, $hash);
+}
+
+/**
+ * Generate CSRF token
+ * @return string
+ */
+function generateCSRFToken() {
+    if (!isset($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * Verify CSRF token
+ * @param string $token
+ * @return bool
+ */
+function verifyCSRFToken($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+/**
+ * Format currency for display
+ * @param float $amount
+ * @param string $currency
+ * @return string
+ */
+function formatCurrency($amount, $currency = 'EUR') {
+    return number_format($amount, 0, ',', ' ') . ' ' . $currency;
+}
+
+/**
+ * Format date for display
+ * @param string $date
+ * @param string $format
+ * @return string
+ */
+function formatDate($date, $format = 'd/m/Y') {
+    return date($format, strtotime($date));
+}
+
+/**
+ * Get user role display name
+ * @param string $role
+ * @return string
+ */
+function getRoleDisplayName($role) {
+    switch ($role) {
+        case 'admin':
+            return 'Administrator';
+        case 'agent':
+            return 'Real Estate Agent';
+        case 'client':
+            return 'Client';
+        default:
+            return 'User';
+    }
+}
+
+/**
+ * Check if user has permission for specific action
+ * @param string $action
+ * @return bool
+ */
+function hasPermission($action) {
+    if (!isLoggedIn()) {
+        return false;
+    }
+    
+    $role = $_SESSION['role'];
+    
+    switch ($action) {
+        case 'view_dashboard':
+            return in_array($role, ['admin', 'agent', 'client']);
+        case 'manage_properties':
+            return in_array($role, ['admin', 'agent']);
+        case 'manage_users':
+            return $role === 'admin';
+        case 'book_appointment':
+            return $role === 'client';
+        case 'manage_appointments':
+            return in_array($role, ['admin', 'agent']);
+        default:
+            return false;
+    }
+}
+
+/**
+ * Generate random string
+ * @param int $length
+ * @return string
+ */
+function generateRandomString($length = 10) {
+    return bin2hex(random_bytes($length / 2));
+}
+
+/**
+ * Clean filename for upload
+ * @param string $filename
+ * @return string
+ */
+function cleanFilename($filename) {
+    // Remove any character that isn't alphanumeric, dash, underscore, or dot
+    $filename = preg_replace('/[^a-zA-Z0-9\-_\.]/', '', $filename);
+    return $filename;
+}
+
+/**
+ * Get file extension
+ * @param string $filename
+ * @return string
+ */
+function getFileExtension($filename) {
+    return strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+}
+
+/**
+ * Check if file type is allowed
+ * @param string $filename
+ * @param array $allowed_types
+ * @return bool
+ */
+function isAllowedFileType($filename, $allowed_types = ['jpg', 'jpeg', 'png', 'gif', 'pdf']) {
+    $extension = getFileExtension($filename);
+    return in_array($extension, $allowed_types);
+}
 ?>

@@ -5,7 +5,18 @@ require_once '../includes/functions.php';
 
 // Redirect if already logged in
 if (isLoggedIn()) {
-    redirect('../index.php');
+    $role = $_SESSION['role'];
+    switch ($role) {
+        case 'admin':
+            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            break;
+        case 'agent':
+            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            break;
+        case 'client':
+        default:
+            redirect('../client/dashboard.php');
+    }
 }
 
 $error = '';
@@ -97,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $update_stmt->execute([$user['id']]);
                 } catch (Exception $e) {
                     // Ignore if column doesn't exist
+                    error_log("Could not update last login time: " . $e->getMessage());
                 }
 
                 // Set success message
@@ -257,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </a>
                     </p>
                     <p class="mb-0">
-                        <a href="../index.php" class="text-muted text-decoration-none">
+                        <a href="../pages/home.php" class="text-muted text-decoration-none">
                             <i class="fas fa-arrow-left me-1"></i>Return to Homepage
                         </a>
                     </p>
