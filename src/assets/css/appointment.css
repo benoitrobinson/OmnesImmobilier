@@ -1,220 +1,43 @@
-.page-title {
-    color: #003366;
-    font-weight: 700;
-    margin-top: 110px;
+/* Appointment page styles */
+body {
+    background: #f8f9fa;
+    padding-top: 80px;
+}
 
-}
-.page-subtitle {
-    color: #555;
-    font-size: 1.15rem;
-    margin-bottom: 2rem;
-}
-.filter-bar {
-    background: #fff;
-    border-radius: 1rem;
-    box-shadow: 0 2px 8px rgba(34,34,34,0.07);
-    padding: 1.25rem 2rem;
-    margin-bottom: 2.5rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1.5rem;
-    justify-content: center;
-    align-items: center;
-}
-.filter-bar label {
-    font-weight: 500;
-    color: #003366;
-    margin-right: 0.5rem;
-}
-.agent-card {
-    background: #fff;
-    border-radius: 1.25rem;
-    box-shadow: 0 2px 12px rgba(34,34,34,0.10);
-    padding: 2rem 1.5rem;
-    margin-bottom: 2rem;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-}
-.agent-info {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-}
-.agent-photo {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid #d4af37;
-    background: #eee;
-}
-.agent-name {
-    font-weight: 700;
-    color: #003366;
-    font-size: 1.2rem;
-}
-.agent-title {
-    color: #888;
-    font-size: 1rem;
-}
-.agent-actions {
-    margin-top: 1rem;
-    display: flex;
-    gap: 0.75rem;
-}
-.btn-primary-custom {
-    background: #003366;
-    color: #fff;
-    border: none;
-    border-radius: 2rem;
-    padding: 0.5rem 1.25rem;
-    font-weight: 500;
-    transition: background 0.2s, box-shadow 0.2s;
-}
-.btn-primary-custom:hover, .btn-primary-custom:focus {
-    background: #002244;
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(0,51,102,0.10);
-}
-.btn-accent {
-    background: #d4af37;
-    color: #fff;
-    border: none;
-    border-radius: 2rem;
-    padding: 0.5rem 1.25rem;
-    font-weight: 500;
-    transition: background 0.2s, box-shadow 0.2s;
-}
-.btn-accent:hover, .btn-accent:focus {
-    background: #bfa133;
-    color: #fff;
-    box-shadow: 0 2px 8px rgba(212,175,55,0.10);
-}
-.time-slots {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    justify-content: flex-end;
-}
-.time-slot-btn {
-    background: #003366;
-    color: #fff;
-    border: none;
-    border-radius: 2rem;
-    padding: 0.4rem 1.1rem;
-    font-size: 0.98rem;
-    font-weight: 500;
-    transition: background 0.2s, color 0.2s;
-}
-.time-slot-btn:hover, .time-slot-btn:focus {
-    background: #d4af37;
-    color: #003366;
-}
-.footer-btn {
-    display: flex;
-    justify-content: center;
-    margin: 2.5rem 0 2rem 0;
-}
-.footer-btn .btn {
-    font-size: 1.1rem;
-    padding: 0.75rem 2.5rem;
-    border-radius: 2rem;
-    background: #003366;
-    color: #fff;
-    font-weight: 600;
-    border: none;
-    transition: background 0.2s;
-}
-.footer-btn .btn:hover, .footer-btn .btn:focus {
-    background: #d4af37;
-    color: #003366;
-}
-.calendar-container {
-    background: #fff;
-    border-radius: 1.5rem;
-    box-shadow: 0 4px 24px rgba(212,175,55,0.10);
+.container {
+    max-width: 900px;
+    margin: 2rem auto;
     padding: 2rem;
-    margin-bottom: 2.5rem;
+    background: white;
+    border-radius: 1rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
-.calendar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.2rem;
-}
-.calendar-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 8px;
-}
-.calendar-table th {
-    text-align: center;
-    color: #bfa133;
-    font-weight: 600;
-    font-size: 1rem;
-}
-.calendar-table td {
-    width: 40px;
-    height: 40px;
-    text-align: center;
-    vertical-align: middle;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 500;
-    transition: background 0.2s, color 0.2s;
-}
-.calendar-table td.free {
-    background: #e9fbe5;
-    color: #1a7f37;
-    border: 1.5px solid #bfa133;
-}
-.calendar-table td.busy {
-    background: #fbe5e5;
-    color: #b33a3a;
-    border: 1.5px solid #bfa133;
-    text-decoration: line-through;
-    cursor: not-allowed;
-}
-.calendar-table td.selected {
-    background: #d4af37 !important;
-    color: #fff !important;
-    border: 2px solid #bfa133 !important;
-}
-.calendar-agent-select {
+
+h2 {
     margin-bottom: 1.5rem;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #333;
 }
-.calendar-legend {
-    margin-top: 1rem;
-    font-size: 0.98rem;
+
+table {
+    width: 100%;
+    margin-bottom: 2rem;
+    border-collapse: collapse;
 }
-.calendar-legend span {
-    display: inline-block;
-    margin-right: 1.5rem;
+
+th, td {
+    padding: 1rem;
+    text-align: left;
+    border-top: 1px solid #e9ecef;
 }
-.calendar-legend .legend-free {
-    width: 18px; height: 18px; background: #e9fbe5; border: 1.5px solid #bfa133; display: inline-block; vertical-align: middle; margin-right: 5px;
+
+th {
+    background: #f1f3f5;
+    color: #495057;
+    font-weight: 500;
 }
-.calendar-legend .legend-busy {
-    width: 18px; height: 18px; background: #fbe5e5; border: 1.5px solid #bfa133; display: inline-block; vertical-align: middle; margin-right: 5px;
-}
-.calendar-legend .legend-selected {
-    width: 18px; height: 18px; background: #d4af37; border: 2px solid #bfa133; display: inline-block; vertical-align: middle; margin-right: 5px;
-}
-@media (max-width: 767.98px) {
-    .agent-card {
-        flex-direction: column;
-        align-items: stretch;
-        padding: 1.25rem 1rem;
-    }
-    .agent-info {
-        flex-direction: column;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    .time-slots {
-        justify-content: center;
-        margin-top: 1rem;
-    }
+
+tr:hover {
+    background: #f8f9fa;
 }

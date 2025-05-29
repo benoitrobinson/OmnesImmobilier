@@ -194,6 +194,29 @@ if ($userRole === 'agent') {
                         </ul>
                     </li>
                 <?php endif; ?>
+                
+                <?php if(!empty($_SESSION['role']) && $_SESSION['role'] === 'agent'): ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="/agent/availability.php">Availability</a>
+                </li>
+                <?php
+                // count pending appointments
+                $count = 0;
+                if (!empty($_SESSION['user_id'])) {
+                    $stmt = $pdo->prepare(
+                        "SELECT COUNT(*) FROM appointments 
+                         WHERE agent_id = ? AND appointment_date >= NOW()"
+                    );
+                    $stmt->execute([ $_SESSION['user_id'] ]);
+                    $count = (int)$stmt->fetchColumn();
+                }
+                ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="/agent/dashboard.php">
+                    Appointments <span class="badge bg-light text-dark"><?=$count?></span>
+                  </a>
+                </li>
+                <?php endif; ?>
             </ul>
         </div>
     </div>

@@ -16,6 +16,36 @@ session_start();
     <!-- Custom CSS -->
     <link href="../assets/css/home.css" rel="stylesheet">
     <link href="../assets/css/navigation.css" rel="stylesheet">
+    <style>
+      /* nav sits flat above hero, no blur */
+      .navbar {
+        position: absolute !important;
+        top: 0; left: 0; right: 0;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        z-index: 1000;
+      }
+      /* strip any corner radius off the hero */
+      .welcome-section {
+        border-radius: 0 !important;
+        overflow: hidden;
+      }
+      /* ensure nav links stay visible */
+      .navbar .navbar-brand,
+      .navbar .nav-link {
+        color: #fff !important;
+      }
+      .navbar .nav-link:hover {
+        color: #ddd !important;
+      }
+
+      /* remove left‐gold border on the Events container */
+      .events-section > .container {
+        border-left: none !important;
+        box-shadow: none !important;
+      }
+    </style>
 </head>
 <body>
     <!-- Include Header -->
@@ -119,35 +149,41 @@ session_start();
     <!-- Quick Actions Section -->
     <?php if (isset($_SESSION['user_id'])): ?>
         <section class="quick-actions-section container my-5">
-            <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="quick-action-card">
+            <div class="row g-4 justify-content-center align-items-stretch"><!-- added align-items-stretch -->
+                <div class="col-md-4 d-flex"><!-- added d-flex -->
+                    <div class="quick-action-card h-100 d-flex flex-column"><!-- added h-100 d-flex flex-column -->
                         <div class="quick-action-icon">
                             <i class="fas fa-search"></i>
                         </div>
                         <h5>Search Properties</h5>
                         <p>Find your perfect home from our extensive collection</p>
-                        <a href="../pages/explore.php" class="btn btn-outline-primary">Browse Now</a>
+                        <a href="../pages/explore.php" class="btn btn-outline-primary mt-auto"><!-- added mt-auto -->
+                            Browse Now
+                        </a>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="quick-action-card">
+                <div class="col-md-4 d-flex">
+                    <div class="quick-action-card h-100 d-flex flex-column">
                         <div class="quick-action-icon">
                             <i class="fas fa-calendar-alt"></i>
                         </div>
                         <h5>Book Appointment</h5>
                         <p>Schedule a viewing with our professional agents</p>
-                        <a href="../client/dashboard.php?section=appointments" class="btn btn-outline-primary">Schedule</a>
+                        <a href="../client/dashboard.php?section=appointments" class="btn btn-outline-primary mt-auto">
+                            Schedule
+                        </a>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="quick-action-card">
+                <div class="col-md-4 d-flex">
+                    <div class="quick-action-card h-100 d-flex flex-column">
                         <div class="quick-action-icon">
                             <i class="fas fa-heart"></i>
                         </div>
                         <h5>My Favorites</h5>
                         <p>View and manage your saved properties</p>
-                        <a href="../client/dashboard.php?section=favorites" class="btn btn-outline-primary">View</a>
+                        <a href="../client/dashboard.php?section=favorites" class="btn btn-outline-primary mt-auto">
+                            View
+                        </a>
                     </div>
                 </div>
             </div>

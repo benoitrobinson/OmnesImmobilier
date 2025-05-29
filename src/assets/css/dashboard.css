@@ -333,9 +333,10 @@
 }
 
 .property-details {
-    color: var(--text-muted);
+    color: #333;
     font-size: 0.875rem;
     margin-bottom: 1rem;
+    font-weight: 600;
 }
 
 /* Appointment Cards */

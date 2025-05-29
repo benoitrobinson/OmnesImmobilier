@@ -662,4 +662,43 @@ function setUserTheme($theme) {
         $_SESSION['user_theme'] = $theme;
     }
 }
+/**
+ * Generate available appointment slots for an agent
+ * @param int $agent_id
+ * @param PDO $pdo
+ * @return array
+ */
+function generateAvailableSlots($agent_id, $pdo) {
+    $slots = [];
+    // fetch availability rules
+    $stmt = $pdo->prepare("SELECT * FROM agent_availability WHERE agent_id=? AND is_available=1");
+    $stmt->execute([$agent_id]);
+    $rules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // fetch existing appointments next 14 days
+    $stmt = $pdo->prepare("
+      SELECT appointment_date FROM appointments
+      WHERE agent_id=? AND appointment_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 14 DAY)
+    ");
+    $stmt->execute([$agent_id]);
+    $booked = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $booked = array_map(function($dt){ return date('Y-m-d H:i', strtotime($dt)); }, $booked);
+    for ($i=0; $i<14; $i++) {
+        $day = date('Y-m-d', strtotime("+$i days"));
+        $dow = date('l', strtotime($day));
+        foreach ($rules as $r) {
+            if ($r['day_of_week']!==$dow) continue;
+            $start = strtotime("$day {$r['start_time']}");
+            $end   = strtotime("$day {$r['end_time']}");
+            for ($t=$start; $t<$end; $t+=3600) {
+                $time = date('Y-m-d H:i', $t);
+                $hour = (int)date('H', $t);
+                if ($hour>=12 && $hour<13) continue; // skip lunch
+                if (!in_array($time, $booked) && strtotime($time)>time()) {
+                    $slots[] = ['date'=>substr($time,0,10),'time'=>substr($time,11,5)];
+                }
+            }
+        }
+    }
+    return $slots;
+}
 ?>

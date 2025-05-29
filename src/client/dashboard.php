@@ -58,7 +58,8 @@ try {
         // Get client statistics
         $stats_query = "SELECT 
                        (SELECT COUNT(*) FROM appointments WHERE client_id = :user_id) as total_appointments,
-                       (SELECT COUNT(*) FROM appointments WHERE client_id = :user_id AND status = 'scheduled') as confirmed_appointments
+                       (SELECT COUNT(*) FROM appointments WHERE client_id = :user_id AND status = 'scheduled') as confirmed_appointments,
+                       (SELECT COUNT(*) FROM user_favorites WHERE user_id = :user_id) as favorites
                        ";
         $stats_stmt = $pdo->prepare($stats_query);
         $stats_stmt->bindParam(':user_id', $_SESSION['user_id']);
@@ -68,7 +69,6 @@ try {
             $stats = array_merge($stats, $user_stats);
         }
         $stats['properties_viewed'] = $stats['total_appointments'] * 2; // Estimation
-        $stats['favorites'] = 5; // Mock data for now
     } elseif (isAgent()) {
         // Get agent statistics
         $stats_query = "SELECT 
@@ -94,19 +94,20 @@ $current_section = $_GET['section'] ?? 'overview';
 $upcoming_appointments = [];
 try {
     if (isClient()) {
-        $appointment_query = "SELECT a.*, p.title as property_title, p.address_line1 as adresse, 
-                             CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-                             a.appointment_date as date_rdv,
-                             TIME(a.appointment_date) as heure_rdv,
-                             a.location as notes
-                      FROM appointments a 
-                      JOIN properties p ON a.property_id = p.id 
-                      JOIN users u ON a.agent_id = u.id 
-                      WHERE a.client_id = :user_id 
-                      AND a.appointment_date >= NOW() 
-                      AND a.status = 'scheduled'
-                      ORDER BY a.appointment_date 
-                      LIMIT 5";
+        $appointment_query = "SELECT 
+                                a.appointment_date,
+                                p.title AS property_title,
+                                p.address_line1 AS adresse,
+                                CONCAT(u.first_name, ' ', u.last_name) AS agent_name,
+                                a.location AS notes
+                                FROM appointments a 
+                                JOIN properties p ON a.property_id = p.id 
+                                JOIN users u ON a.agent_id = u.id 
+                                WHERE a.client_id = :user_id 
+                                  AND a.appointment_date >= NOW() 
+                                  AND a.status = 'scheduled'
+                                ORDER BY a.appointment_date 
+                                LIMIT 5";
         $appointment_stmt = $pdo->prepare($appointment_query);
         $appointment_stmt->bindParam(':user_id', $_SESSION['user_id']);
         $appointment_stmt->execute();
@@ -117,80 +118,75 @@ try {
     // Use mock data as fallback
 }
 
-// Get real properties or use mock data
+// Get real favorite properties from user_favorites table
 $favorite_properties = [];
 try {
-    $property_query = "SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
-                       CASE WHEN p.property_type = 'apartment' THEN FLOOR(RAND() * 5 + 1)
-                            WHEN p.property_type = 'house' THEN FLOOR(RAND() * 8 + 2)
-                            ELSE 0 END as nb_pieces,
-                       CASE WHEN p.property_type IN ('apartment', 'house') THEN FLOOR(RAND() * 150 + 30)
-                            ELSE FLOOR(RAND() * 1000 + 100) END as surface,
-                       CASE WHEN p.property_type = 'apartment' THEN CONCAT('Floor ', FLOOR(RAND() * 10 + 1))
-                            ELSE 'Ground floor' END as etage
-                FROM properties p 
-                LEFT JOIN users u ON p.agent_id = u.id 
-                WHERE p.status = 'available' 
-                ORDER BY p.created_at DESC 
-                LIMIT 6";
-    $property_stmt = $pdo->prepare($property_query);
-    $property_stmt->execute();
-    $db_properties = $property_stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Convert to expected format
-    foreach ($db_properties as $prop) {
-        $favorite_properties[] = [
-            'id' => $prop['id'],
-            'titre' => $prop['title'],
-            'prix' => $prop['price'],
-            'nb_pieces' => $prop['nb_pieces'],
-            'surface' => $prop['surface'],
-            'etage' => $prop['etage'],
-            'agent_name' => $prop['agent_name'] ?? 'Not assigned'
-        ];
+    if (isClient()) {
+        $property_query = "SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+                           uf.created_at as favorited_at
+                    FROM user_favorites uf
+                    JOIN properties p ON uf.property_id = p.id 
+                    LEFT JOIN users u ON p.agent_id = u.id 
+                    WHERE uf.user_id = :user_id
+                    AND p.status = 'available'
+                    ORDER BY uf.created_at DESC";
+        $property_stmt = $pdo->prepare($property_query);
+        $property_stmt->bindParam(':user_id', $_SESSION['user_id']);
+        $property_stmt->execute();
+        $db_properties = $property_stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Convert to expected format
+        foreach ($db_properties as $prop) {
+            // Generate realistic property details based on type
+            $nb_pieces = 0;
+            $surface = 0;
+            $etage = '';
+            
+            switch ($prop['property_type']) {
+                case 'apartment':
+                    $nb_pieces = rand(1, 5);
+                    $surface = rand(30, 150);
+                    $etage = 'Floor ' . rand(1, 10);
+                    break;
+                case 'house':
+                    $nb_pieces = rand(3, 8);
+                    $surface = rand(80, 300);
+                    $etage = 'Ground floor';
+                    break;
+                case 'commercial':
+                    $nb_pieces = 0;
+                    $surface = rand(50, 500);
+                    $etage = 'Ground floor';
+                    break;
+                default:
+                    $nb_pieces = 0;
+                    $surface = rand(100, 1000);
+                    $etage = 'N/A';
+                    break;
+            }
+            
+            $favorite_properties[] = [
+                'id' => $prop['id'],
+                'titre' => $prop['title'],
+                'prix' => $prop['price'],
+                'nb_pieces' => $nb_pieces,
+                'surface' => $surface,
+                'etage' => $etage,
+                'agent_name' => $prop['agent_name'] ?? 'Not assigned',
+                'property_type' => $prop['property_type'],
+                'city' => $prop['city'],
+                'address_line1' => $prop['address_line1'],
+                'description' => $prop['description'],
+                'favorited_at' => $prop['favorited_at']
+            ];
+        }
     }
 } catch (Exception $e) {
-    error_log("Properties error: " . $e->getMessage());
-    // Use mock data as fallback
+    error_log("Favorite Properties error: " . $e->getMessage());
+    // Keep empty array if error occurs
 }
 
-// Mock data as fallback if no real data
-if (empty($upcoming_appointments)) {
-    $upcoming_appointments = [
-        [
-            'id' => 1,
-            'property_title' => '3-Room Apartment - Le Marais',
-            'agent_name' => 'Jean-Pierre SEGADO',
-            'date_rdv' => '2025-05-28',
-            'heure_rdv' => '14:30:00',
-            'adresse' => '12 Rue des Rosiers, 75004 Paris',
-            'notes' => 'Door code: A1234'
-        ]
-    ];
-}
-
-if (empty($favorite_properties)) {
-    $favorite_properties = [
-        [
-            'id' => 1,
-            'titre' => '3-Room Apartment - Le Marais',
-            'prix' => 850000,
-            'nb_pieces' => 3,
-            'surface' => 65,
-            'etage' => '3rd floor',
-            'agent_name' => 'Jean-Pierre SEGADO'
-        ],
-        [
-            'id' => 2,
-            'titre' => '4-Room House - Neuilly-sur-Seine',
-            'prix' => 1250000,
-            'nb_pieces' => 4,
-            'surface' => 120,
-            'etage' => 'Ground floor',
-            'agent_name' => 'Sophie MARTIN'
-        ]
-    ];
-}
+// No mock data - only show real appointments from database
 ?>
 
 <!DOCTYPE html>
@@ -224,7 +220,7 @@ if (empty($favorite_properties)) {
 
         /* Enhanced header styling to match account page */
         .luxury-header {
-            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            background: #000 !important;
             padding: 1rem 0;
             color: white;
             margin-bottom: 0;
@@ -236,6 +232,10 @@ if (empty($favorite_properties)) {
             font-weight: 700;
             text-decoration: none !important;
             color: white !important;
+        }
+
+        .brand-logo img {
+            height: 80px !important;
         }
 
         .brand-logo:hover {
@@ -681,11 +681,9 @@ if (empty($favorite_properties)) {
             font-weight: 700;
             font-size: 1.25rem;
             margin-bottom: 0.5rem;
-        }
-
-        .property-title {
+        }        .property-title {
             color: #333;
-            font-weight: 600;
+            font-weight: 700;
             margin-bottom: 0.75rem;
             font-size: 1.1rem;
         }
@@ -694,6 +692,37 @@ if (empty($favorite_properties)) {
             color: #6c757d;
             font-size: 0.875rem;
             margin-bottom: 1rem;
+        }
+
+        /* make modal header title and section headings heaviest */
+        .modal-title,
+        .modal-body h6 {
+            font-weight: 700 !important;
+            color: #333 !important;
+        }
+
+        /* body paragraphs slightly lighter */
+        .modal-body p {
+            font-weight: 400 !important;
+            color: #555 !important;
+        }
+
+        /* replace black override with gold */
+        .modal-body .text-primary {
+            color: #d4af37 !important;
+            font-weight: 700 !important;
+        }
+
+        /* darken the close icon */
+        .modal-header .btn-close {
+            --bs-btn-close-color: #333;
+            filter: none;
+        }
+
+        /* force close‐icon to dark */
+        .modal-header .btn-close {
+            color: #333 !important;
+            opacity: 1 !important;
         }
 
         /* Mobile responsive */
@@ -770,6 +799,22 @@ if (empty($favorite_properties)) {
         .bg-grey-light {
             background-color: #f8f9fa !important;
         }
+
+        /* darker, bolder text in upcoming appointments & favorites cards */
+        .content-card-body .fw-semibold,
+        .content-card-body .text-muted,
+        .content-card-body small,
+        .content-card-body p {
+            font-weight: 600 !important;
+            color: #333 !important;
+        }
+
+        /* appointment icons more prominent */
+        .content-card-header i.fa-calendar-check,
+        .content-card-body i.fa-calendar-alt {
+            color: #333 !important;
+            font-size: 2.5rem !important;
+        }
     </style>
 </head>
 <body data-page="dashboard">
@@ -779,7 +824,7 @@ if (empty($favorite_properties)) {
             <div class="row align-items-center">
                 <div class="col-md-6">
                     <a href="../pages/home.php" class="brand-logo text-decoration-none">
-                        <i class="fas fa-building me-2"></i>Omnes Real Estate
+                        <img src="../assets/images/logo1.png" alt="Omnes Real Estate" height="40">
                     </a>
                 </div>
                 <div class="col-md-6 text-end">
@@ -982,7 +1027,7 @@ if (empty($favorite_properties)) {
                             <i class="fas fa-search"></i>
                             <span>Search</span>
                         </a>
-                        <a href="?section=favorites" class="nav-link-luxury <?= $current_section === 'favorites' ? 'active' : '' ?>">
+                        <a href="?section=favorites#favoritesSection" class="nav-link-luxury <?= $current_section === 'favorites' ? 'active' : '' ?>">
                             <i class="fas fa-heart"></i>
                             <span>Favorites</span>
                         </a>
@@ -1028,7 +1073,7 @@ if (empty($favorite_properties)) {
                                                     <div class="fw-semibold"><?= htmlspecialchars($appointment['property_title']) ?></div>
                                                     <small class="text-muted">with <?= htmlspecialchars($appointment['agent_name']) ?></small>
                                                     <div class="text-primary mt-1">
-                                                        <small><?= date('M d, Y - H:i', strtotime($appointment['date_rdv'] . ' ' . $appointment['heure_rdv'])) ?></small>
+                                                        <small><?= date('M d, Y - H:i', strtotime($appointment['appointment_date'])) ?></small>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1054,23 +1099,32 @@ if (empty($favorite_properties)) {
                                 </div>
                                 <div class="content-card-body">
                                     <?php if (!empty($favorite_properties)): ?>
-                                        <?php foreach (array_slice($favorite_properties, 0, 2) as $property): ?>
-                                            <div class="d-flex align-items-center mb-3 p-3 bg-light rounded">
-                                                <div class="me-3 fs-1">🏠</div>
+                                        <?php foreach (array_slice($favorite_properties, 0, 2) as $property): ?>                                            <div class="d-flex align-items-center mb-3 p-3 bg-light rounded">
+                                                <div class="me-3" style="width: 80px; height: 80px; border-radius: 8px; overflow: hidden; border: 2px solid #d4af37;">
+                                                    <img src="../assets/images/property<?= $property['id'] ?>-2.jpg" 
+                                                         alt="<?= htmlspecialchars($property['titre']) ?>"
+                                                         style="width: 100%; height: 100%; object-fit: cover;"
+                                                         onerror="this.src='../assets/images/placeholder.jpg'">
+                                                </div>
                                                 <div class="flex-grow-1">
                                                     <div class="fw-semibold"><?= htmlspecialchars($property['titre']) ?></div>
                                                     <small class="text-muted"><?= $property['surface'] ?>m² • <?= $property['nb_pieces'] ?> rooms</small>
                                                     <div class="property-price mt-1">€<?= number_format($property['prix'], 0, ',', ' ') ?></div>
+                                                    <div class="mt-2">
+                                                        <a href="../pages/explore.php?property_id=<?= $property['id'] ?>" 
+                                                           class="btn btn-sm btn-outline-primary">
+                                                            <i class="fas fa-eye me-1"></i>View Details
+                                                        </a>
+                                                    </div>
                                                 </div>
                                             </div>
                                         <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <div class="text-center py-4">
+                                    <?php else: ?>                                        <div class="text-center py-4">
                                             <i class="fas fa-heart fa-3x text-muted mb-3"></i>
                                             <p class="text-muted">No favorite properties yet</p>
-                                            <a href="?section=search" class="btn-luxury-primary">
+                                            <a href="../pages/explore.php" class="btn-luxury-primary">
                                                 <i class="fas fa-search"></i>
-                                                Start Browsing
+                                                Browse Properties
                                             </a>
                                         </div>
                                     <?php endif; ?>
@@ -1080,53 +1134,56 @@ if (empty($favorite_properties)) {
                     </div>
 
                 <?php elseif ($current_section === 'appointments'): ?>
-                    <div class="content-card">
-                        <div class="content-card-header">
-                            <i class="fas fa-calendar-alt me-2"></i>My Appointments
+                    <!-- flash success from booking -->
+                    <?php if (!empty($_SESSION['success_message'])): ?>
+                        <div class="alert alert-success">
+                            <?= $_SESSION['success_message'] ?>
                         </div>
-                        <div class="content-card-body">
-                            <?php if (!empty($upcoming_appointments)): ?>
-                                <?php foreach ($upcoming_appointments as $appointment): ?>
-                                    <div class="row align-items-center py-3 <?= $appointment !== end($upcoming_appointments) ? 'border-bottom' : '' ?>">
-                                        <div class="col-md-6">
-                                            <div class="fw-semibold"><?= htmlspecialchars($appointment['property_title']) ?></div>
-                                            <div class="text-muted">Agent: <?= htmlspecialchars($appointment['agent_name']) ?></div>
-                                        </div>
-                                        <div class="col-md-3">
-                                            <div class="text-primary">
-                                                <i class="fas fa-calendar me-2"></i>
-                                                <?= date('M d, Y', strtotime($appointment['date_rdv'])) ?>
-                                            </div>
-                                            <div class="text-muted">
-                                                <i class="fas fa-clock me-2"></i>
-                                                <?= date('H:i', strtotime($appointment['heure_rdv'])) ?>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-3 text-end">
-                                            <div class="btn-group">
-                                                <button class="btn btn-sm btn-outline-success" title="Contact Agent">
-                                                    <i class="fas fa-phone"></i>
-                                                </button>
-                                                <button class="btn btn-sm btn-outline-danger" title="Cancel">
-                                                    <i class="fas fa-times"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <div class="text-center py-5">
-                                    <i class="fas fa-calendar-times fa-4x text-muted mb-4"></i>
-                                    <h4 class="text-muted mb-3">No Appointments Scheduled</h4>
-                                    <p class="text-muted mb-4">Start exploring properties and book appointments with our agents.</p>
-                                    <a href="?section=search" class="btn-luxury-primary">
-                                        <i class="fas fa-search"></i>
-                                        Browse Properties
-                                    </a>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
+                        <?php unset($_SESSION['success_message']); ?>
+                    <?php endif; ?>
+                    <ul class="nav nav-tabs mb-4">
+                      <li class="nav-item">
+                        <a class="nav-link <?= ($_GET['section'] ?? '')==='appointments' ? 'active' : '' ?>"
+                           href="?section=appointments">My Appointments</a>
+                      </li>
+                    </ul>
+
+                    <?php if(($_GET['section'] ?? '')==='appointments'): 
+                      // fetch appointments
+                      $stmt = $pdo->prepare("
+                        SELECT a.appointment_date, a.status, p.title AS property,
+                               CONCAT(u.first_name,' ',u.last_name) AS agent
+                        FROM appointments a
+                        JOIN properties p ON a.property_id=p.id
+                        JOIN users u ON a.agent_id=u.id
+                        WHERE a.client_id=?
+                        ORDER BY a.appointment_date DESC
+                      ");
+                      $stmt->execute([$_SESSION['user_id']]);
+                      $apps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    ?>
+                      <?php if (empty($apps)): ?>
+                        <p>No appointments found.</p>
+                      <?php else: ?>
+                        <table class="table">
+                          <thead>
+                            <tr>
+                              <th>Date & Time</th><th>Property</th><th>Agent</th><th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php foreach($apps as $a): ?>
+                              <tr>
+                                <td><?= date('d M Y, H:i', strtotime($a['appointment_date'])) ?></td>
+                                <td><?= htmlspecialchars($a['property']) ?></td>
+                                <td><?= htmlspecialchars($a['agent']) ?></td>
+                                <td><?= ucfirst(htmlspecialchars($a['status'])) ?></td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      <?php endif; ?>
+                    <?php endif; ?>
 
                 <?php elseif ($current_section === 'search'): ?>
                     <div class="content-card">
@@ -1196,18 +1253,20 @@ if (empty($favorite_properties)) {
                     </div>
 
                 <?php elseif ($current_section === 'favorites'): ?>
-                    <div class="content-card">
+                    <div id="favoritesSection" class="content-card">
                         <div class="content-card-header">
                             <i class="fas fa-heart me-2"></i>My Favorite Properties
                         </div>
                         <div class="content-card-body">
                             <?php if (!empty($favorite_properties)): ?>
                                 <div class="row">
-                                    <?php foreach ($favorite_properties as $property): ?>
-                                        <div class="col-md-6 col-lg-4 mb-4">
+                                    <?php foreach ($favorite_properties as $property): ?>                                        <div class="col-md-6 col-lg-4 mb-4">
                                             <div class="property-card">
-                                                <div class="property-image">
-                                                    🏠
+                                                <div class="property-image" style="height: 200px; overflow: hidden;">
+                                                    <img src="../assets/images/property<?= $property['id'] ?>-2.jpg" 
+                                                         alt="<?= htmlspecialchars($property['titre']) ?>"
+                                                         style="width: 100%; height: 100%; object-fit: cover;"
+                                                         onerror="this.src='../assets/images/placeholder.jpg'">
                                                 </div>
                                                 <div class="p-3">
                                                     <div class="property-price">€<?= number_format($property['prix'], 0, ',', ' ') ?></div>
@@ -1216,12 +1275,15 @@ if (empty($favorite_properties)) {
                                                         <?= $property['surface'] ?>m² • <?= $property['nb_pieces'] ?> rooms<br>
                                                         <?= htmlspecialchars($property['etage'] ?? 'Floor not specified') ?><br>
                                                         Agent: <?= htmlspecialchars($property['agent_name'] ?? 'Not assigned') ?>
-                                                    </div>
-                                                    <div class="d-flex gap-2">
-                                                        <a href="#" class="btn-luxury-primary flex-grow-1">
-                                                            View Details
-                                                        </a>
-                                                        <button class="btn btn-outline-danger" title="Remove from favorites">
+                                                    </div>                                                    <div class="d-flex gap-2">
+                                                        <button type="button" 
+                                                                class="btn-luxury-primary flex-grow-1"
+                                                                onclick="showPropertyDetailsFromDashboard(<?= htmlspecialchars(json_encode($property)) ?>, true)">
+                                                            <i class="fas fa-eye me-1"></i>View Details
+                                                        </button>
+                                                        <button class="btn btn-outline-danger" 
+                                                                title="Remove from favorites"
+                                                                onclick="removeFavorite(<?= $property['id'] ?>, this)">
                                                             <i class="fas fa-trash"></i>
                                                         </button>
                                                     </div>
@@ -1230,12 +1292,11 @@ if (empty($favorite_properties)) {
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
-                            <?php else: ?>
-                                <div class="text-center py-5">
+                            <?php else: ?>                                <div class="text-center py-5">
                                     <i class="fas fa-heart-broken fa-4x text-muted mb-4"></i>
                                     <h4 class="text-muted mb-3">No Favorite Properties</h4>
                                     <p class="text-muted mb-4">Start browsing properties and save your favorites for easy access.</p>
-                                    <a href="?section=search" class="btn-luxury-primary">
+                                    <a href="../pages/explore.php" class="btn-luxury-primary">
                                         <i class="fas fa-search"></i>
                                         Browse Properties
                                     </a>
@@ -1244,6 +1305,26 @@ if (empty($favorite_properties)) {
                         </div>
                     </div>
                 <?php endif; ?>
+            </div>        </div>
+    </div>
+
+    <!-- Property Details Modal -->
+    <div class="modal fade" id="propertyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="propertyModalTitle">Property Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="propertyModalBody">
+                    <!-- Content will be populated by JavaScript -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="../pages/explore.php" class="btn btn-primary" id="explorePropertiesBtn">
+                        <i class="fas fa-search me-1"></i>Explore All Properties
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -1294,8 +1375,121 @@ if (empty($favorite_properties)) {
                     }
                 }, 300);
             }
+        }    });
+    
+    // Property details modal functionality
+    function showPropertyDetailsFromDashboard(property, isFavorited = false) {
+        document.getElementById('propertyModalTitle').textContent = property.titre;
+        
+        // Get the primary image for this property
+        const primaryImage = `../assets/images/property${property.id}-2.jpg`;
+        
+        const modalBody = document.getElementById('propertyModalBody');
+        modalBody.innerHTML = `
+            <div class="row">
+            <div class="col-md-6">
+            <div class="mb-3" style="height: 250px; border-radius: 8px; overflow: hidden; border: 2px solid #d4af37;">
+            <img src="${primaryImage}" 
+                 alt="${property.titre}"
+                 style="width: 100%; height: 100%; object-fit: cover;"
+                 onerror="this.src='../assets/images/placeholder.jpg'">
+            </div>
+            </div>
+            <div class="col-md-6">
+            <h6 class="fw-bold" style="color: #111; font-weight: 600;"><i class="fas fa-map-marker-alt me-2"></i>Location</h6>
+            <p class="fw-semibold" style="color: #111; font-weight: 600;">${property.address_line1 || 'Address not specified'}, ${property.city || 'City not specified'}</p>
+            
+            <h6 class="fw-bold" style="color: #111; font-weight: 600;"><i class="fas fa-info-circle me-2"></i>Property Details</h6>
+            <p class="fw-semibold" style="color: #111; font-weight: 600;">
+            Type: <span class="fw-bold" style="color: #111; font-weight: 600;">${property.property_type ? property.property_type.charAt(0).toUpperCase() + property.property_type.slice(1) : 'Not specified'}</span><br>
+            Surface: <span class="fw-bold" style="color: #111; font-weight: 600;">${property.surface}m²</span><br>
+            Rooms: <span class="fw-bold" style="color: #111; font-weight: 600;">${property.nb_pieces}</span><br>
+            Floor: <span class="fw-bold" style="color: #111; font-weight: 600;">${property.etage}</span>
+            </p>
+            
+            <h6 class="fw-bold" style="color: #111; font-weight: 600;"><i class="fas fa-euro-sign me-2"></i>Price</h6>
+            <p class="h4 text-primary fw-bold" style="color: #111; font-weight: 600;">€${new Intl.NumberFormat().format(property.prix)}</p>
+            
+            <h6 class="fw-bold" style="color: #111; font-weight: 600;"><i class="fas fa-user-tie me-2"></i>Agent</h6>
+            <p class="fw-semibold" style="color: #111; font-weight: 600;">${property.agent_name || 'Not assigned'}</p>
+            </div>
+            </div>
+            <hr>
+            <h6 class="fw-bold" style="color: #111; font-weight: 600;"><i class="fas fa-file-alt me-2"></i>Description</h6>
+            <p class="fw-semibold" style="color: #111; font-weight: 600;">${property.description || 'No description available for this property.'}</p>
+            <div class="d-grid gap-2">
+            <a href="../pages/explore.php?property_id=${property.id}" class="btn btn-primary fw-bold">
+            <i class="fas fa-eye me-1"></i>View Full Details in Explore
+            </a>
+            <button type="button" 
+            class="btn btn-outline-danger fw-bold"
+            onclick="removeFavoriteFromModal(${property.id})">
+            <i class="fas fa-heart-broken me-1"></i>Remove from Favorites
+            </button>
+            </div>
+        `;
+        
+        // Show the modal
+        const modal = new bootstrap.Modal(document.getElementById('propertyModal'));
+        modal.show();
+    }
+    
+    // Remove favorite from modal
+    function removeFavoriteFromModal(propertyId) {
+        if (confirm('Are you sure you want to remove this property from your favorites?')) {
+            removeFavorite(propertyId, null);
+            // Close the modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('propertyModal'));
+            modal.hide();
         }
-    });
+    }
+      // Remove favorite function
+    function removeFavorite(propertyId, element) {
+        fetch('../ajax/favorites.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `property_id=${propertyId}&action=remove`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                showNotification('Property removed from favorites!', 'success');
+                // Reload the page to update the favorites list
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                showNotification('Error removing from favorites: ' + (data.message || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error removing from favorites', 'error');
+        });
+    }
+    
+    // Show notification function
+    function showNotification(message, type) {
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
+    }
     </script>
 </body>
 </html>

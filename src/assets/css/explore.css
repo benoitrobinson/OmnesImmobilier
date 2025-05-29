@@ -17,26 +17,24 @@ body {
 
 /* Hero Section */
 .explore-hero-bg {
-    background: url('../images/explore-bg.png') top center/cover no-repeat;
-    min-height: 420px;
-    width: 100%;
+    background: url('../images/explore-bg.png') no-repeat center center;
+    background-size: cover;
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    height: 400px;
 }
 .explore-hero-overlay {
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(17,17,17,0.45);
-    z-index: 1;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
 }
 .explore-hero-content {
-    position: relative;
-    z-index: 2;
-    color: var(--white);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
     text-align: center;
-    padding: 2.5rem 1rem;
+    padding: 0 1rem;
 }
 .explore-hero-content h1 {
     font-size: 2.7rem;
