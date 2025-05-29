@@ -141,7 +141,7 @@ $userRole = $_SESSION['role'] ?? '';
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end account-dropdown-menu" aria-labelledby="accountDropdown">
                             <li class="dropdown-header text-center">
-                                <i class="fas fa-home fa-2x text-primary mb-2" style="margin-top: 350px;"></i>
+                                <i class="fas fa-home fa-2x text-primary mb-2" ></i>
                                 <div class="fw-semibold">Welcome to Omnes Immobilier</div>
                                 <small class="text-muted">Your premium real estate partner</small>
                             </li>
@@ -176,6 +176,29 @@ $userRole = $_SESSION['role'] ?? '';
                             </li>
                         </ul>
                     </li>
+                <?php endif; ?>
+                
+                <?php if(!empty($_SESSION['role']) && $_SESSION['role'] === 'agent'): ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="/agent/availability.php">Availability</a>
+                </li>
+                <?php
+                // count pending appointments
+                $count = 0;
+                if (!empty($_SESSION['user_id'])) {
+                    $stmt = $pdo->prepare(
+                        "SELECT COUNT(*) FROM appointments 
+                         WHERE agent_id = ? AND appointment_date >= NOW()"
+                    );
+                    $stmt->execute([ $_SESSION['user_id'] ]);
+                    $count = (int)$stmt->fetchColumn();
+                }
+                ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="/agent/dashboard.php">
+                    Appointments <span class="badge bg-light text-dark"><?=$count?></span>
+                  </a>
+                </li>
                 <?php endif; ?>
             </ul>
         </div>

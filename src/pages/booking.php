@@ -30,13 +30,12 @@ $available_agents = [];
 
 // Étape 1 : Sélection de la propriété ou de l'agent
 // Cette logique permet d'arriver sur la page de réservation depuis différents points d'entrée
-if ($property_id) {
-    // Cas où l'utilisateur vient d'une page de propriété spécifique
-    $property_query = "SELECT p.*, a.id as agent_id, u.prenom as agent_prenom, u.nom as agent_nom, u.telephone as agent_telephone
-                      FROM proprietes p 
-                      LEFT JOIN agents a ON p.agent_id = a.id 
+if ($property_id) {    // Cas où l'utilisateur vient d'une page de propriété spécifique
+    $property_query = "SELECT p.*, a.user_id as agent_id, u.first_name as agent_first_name, u.last_name as agent_last_name, u.phone as agent_phone
+                      FROM properties p 
+                      LEFT JOIN agents a ON p.agent_id = a.user_id 
                       LEFT JOIN users u ON a.user_id = u.id 
-                      WHERE p.id = :property_id AND p.status = 'disponible'";
+                      WHERE p.id = :property_id AND p.status = 'available'";
     $property_stmt = $db->prepare($property_query);
     $property_stmt->bindParam(':property_id', $property_id, PDO::PARAM_INT);
     $property_stmt->execute();
@@ -49,10 +48,10 @@ if ($property_id) {
 
 if ($agent_id) {
     // Récupération des informations de l'agent sélectionné
-    $agent_query = "SELECT a.*, u.prenom, u.nom, u.telephone, u.email, u.adresse_ligne1, u.ville
+    $agent_query = "SELECT a.*, u.first_name, u.last_name, u.phone, u.email
                    FROM agents a 
                    JOIN users u ON a.user_id = u.id 
-                   WHERE a.id = :agent_id AND u.is_active = 1";
+                   WHERE a.user_id = :agent_id";
     $agent_stmt = $db->prepare($agent_query);
     $agent_stmt->bindParam(':agent_id', $agent_id, PDO::PARAM_INT);
     $agent_stmt->execute();
@@ -61,14 +60,14 @@ if ($agent_id) {
 
 // Si aucun agent n'est spécifié, récupérer la liste des agents disponibles
 if (!$agent_id) {
-    $agents_query = "SELECT a.id, u.prenom, u.nom, a.specialite, a.experience_annees,
+    $agents_query = "SELECT a.user_id as id, u.first_name, u.last_name, a.agency_name,
                     COUNT(p.id) as nb_proprietes
                     FROM agents a 
                     JOIN users u ON a.user_id = u.id 
-                    LEFT JOIN proprietes p ON a.id = p.agent_id AND p.status = 'disponible'
-                    WHERE u.is_active = 1 AND a.disponible = 1
-                    GROUP BY a.id 
-                    ORDER BY u.prenom, u.nom";
+                    LEFT JOIN properties p ON a.user_id = p.agent_id AND p.status = 'available'
+                    WHERE u.role = 'agent'
+                    GROUP BY a.user_id 
+                    ORDER BY u.first_name, u.last_name";
     $agents_stmt = $db->prepare($agents_query);
     $agents_stmt->execute();
     $available_agents = $agents_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -98,12 +97,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         if (!$rdv_timestamp || $rdv_timestamp <= time()) {
             $error = 'La date et heure sélectionnées ne sont pas valides ou sont dans le passé.';
-        } else {
-            // Vérification de la disponibilité de l'agent (éviter les conflits)
-            $conflict_query = "SELECT id FROM rendez_vous 
+        } else {            // Vérification de la disponibilité de l'agent (éviter les conflits)
+            $conflict_query = "SELECT id FROM appointments 
                               WHERE agent_id = :agent_id 
-                              AND date_rdv = :date_rdv 
-                              AND status IN ('confirme', 'en_attente')";
+                              AND appointment_date = :date_rdv 
+                              AND status IN ('scheduled')";
             $conflict_stmt = $db->prepare($conflict_query);
             $conflict_stmt->bindParam(':agent_id', $selected_agent_id);
             $conflict_stmt->bindParam(':date_rdv', $datetime_rdv);
@@ -116,17 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Utilisation d'une transaction pour garantir la cohérence des données
                 try {
                     $db->beginTransaction();
-                    
-                    $insert_query = "INSERT INTO rendez_vous 
-                                   (client_id, agent_id, propriete_id, date_rdv, type_rdv, notes, status) 
-                                   VALUES (:client_id, :agent_id, :property_id, :date_rdv, :type_rdv, :notes, 'en_attente')";
+                      $insert_query = "INSERT INTO appointments 
+                                   (client_id, agent_id, property_id, appointment_date, location, status) 
+                                   VALUES (:client_id, :agent_id, :property_id, :date_rdv, :notes, 'scheduled')";
                     
                     $insert_stmt = $db->prepare($insert_query);
                     $insert_stmt->bindParam(':client_id', $_SESSION['user_id']);
                     $insert_stmt->bindParam(':agent_id', $selected_agent_id);
                     $insert_stmt->bindParam(':property_id', $selected_property_id);
                     $insert_stmt->bindParam(':date_rdv', $datetime_rdv);
-                    $insert_stmt->bindParam(':type_rdv', $type_rdv);
                     $insert_stmt->bindParam(':notes', $notes);
                     
                     if ($insert_stmt->execute()) {
@@ -259,19 +255,18 @@ $types_rdv = [
                                     <!-- Agent pré-sélectionné -->
                                     <div class="selected-agent-card p-3 bg-light rounded">
                                         <input type="hidden" name="agent_id" value="<?= $agent['id'] ?>">
-                                        <div class="d-flex align-items-center">
-                                            <div class="agent-avatar me-3">
+                                        <div class="d-flex align-items-center">                                            <div class="agent-avatar me-3">
                                                 <img src="../assets/images/agents/placeholder-agent.jpg" 
-                                                     alt="<?= htmlspecialchars($agent['prenom'] . ' ' . $agent['nom']) ?>"
+                                                     alt="<?= htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name']) ?>"
                                                      class="rounded-circle" width="60" height="60">
                                             </div>
                                             <div class="agent-info flex-grow-1">
-                                                <h6 class="mb-1"><?= htmlspecialchars($agent['prenom'] . ' ' . $agent['nom']) ?></h6>
-                                                <?php if ($agent['specialite']): ?>
-                                                    <p class="text-muted small mb-1"><?= htmlspecialchars($agent['specialite']) ?></p>
+                                                <h6 class="mb-1"><?= htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name']) ?></h6>
+                                                <?php if ($agent['speciality']): ?>
+                                                    <p class="text-muted small mb-1"><?= htmlspecialchars($agent['speciality']) ?></p>
                                                 <?php endif; ?>
                                                 <p class="text-muted small mb-0">
-                                                    <i class="fas fa-phone me-1"></i><?= htmlspecialchars($agent['telephone']) ?>
+                                                    <i class="fas fa-phone me-1"></i><?= htmlspecialchars($agent['phone']) ?>
                                                 </p>
                                             </div>
                                             <div class="agent-actions">
@@ -301,15 +296,14 @@ $types_rdv = [
                                                             <label class="btn btn-outline-primary w-100 p-3" 
                                                                    for="agent_<?= $available_agent['id'] ?>">
                                                                 <div class="d-flex align-items-center">
-                                                                    <div class="agent-avatar me-3">
-                                                                        <img src="../assets/images/agents/placeholder-agent.jpg" 
-                                                                             alt="<?= htmlspecialchars($available_agent['prenom'] . ' ' . $available_agent['nom']) ?>"
+                                                                    <div class="agent-avatar me-3">                                                                    <img src="../assets/images/agents/placeholder-agent.jpg" 
+                                                                             alt="<?= htmlspecialchars($available_agent['first_name'] . ' ' . $available_agent['last_name']) ?>"
                                                                              class="rounded-circle" width="50" height="50">
                                                                     </div>
                                                                     <div class="agent-info text-start">
-                                                                        <h6 class="mb-1"><?= htmlspecialchars($available_agent['prenom'] . ' ' . $available_agent['nom']) ?></h6>
-                                                                        <?php if ($available_agent['specialite']): ?>
-                                                                            <p class="small text-muted mb-1"><?= htmlspecialchars($available_agent['specialite']) ?></p>
+                                                                        <h6 class="mb-1"><?= htmlspecialchars($available_agent['first_name'] . ' ' . $available_agent['last_name']) ?></h6>
+                                                                        <?php if ($available_agent['speciality']): ?>
+                                                                            <p class="small text-muted mb-1"><?= htmlspecialchars($available_agent['speciality']) ?></p>
                                                                         <?php endif; ?>
                                                                         <p class="small text-muted mb-0">
                                                                             <?= $available_agent['nb_proprietes'] ?> propriétés • 
