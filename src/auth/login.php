@@ -8,7 +8,7 @@ if (isLoggedIn()) {
     $role = $_SESSION['role'];
     switch ($role) {
         case 'admin':
-            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            redirect('../admin/dashboard.php'); // Temporarily redirect to client dashboard
             break;
         case 'agent':
             redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 switch ($user['role']) {
                     case 'admin':
                         $_SESSION['success_message'] = 'Welcome back, ' . $user['first_name'] . '! You have administrator access.';
-                        redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+                        redirect('../admin/dashboard.php'); // Temporarily redirect to client dashboard
                         break;
                     case 'agent':
                         $_SESSION['success_message'] = 'Welcome back, ' . $user['first_name'] . '! Ready to manage your properties?';

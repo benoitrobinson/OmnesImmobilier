@@ -5,7 +5,20 @@ $userFirstName = $_SESSION['first_name'] ?? '';
 $userLastName = $_SESSION['last_name'] ?? '';
 $userRole = $_SESSION['role'] ?? '';
 
-// Always use the same (transparent) navbar style on all pages
+// Determine role-based paths
+$dashboardPath = '../client/dashboard.php';
+$accountPath = '../client/account.php';
+$roleDisplayName = 'Client';
+
+if ($userRole === 'agent') {
+    $dashboardPath = '../agent/dashboard.php';
+    $accountPath = '../agent/account.php';
+    $roleDisplayName = 'Licensed Agent';
+} elseif ($userRole === 'admin') {
+    $dashboardPath = '../admin/dashboard.php';
+    $accountPath = '../admin/account.php';
+    $roleDisplayName = 'Administrator';
+}
 ?>
 <nav class="navbar navbar-expand-lg custom-navbar navbar-transparent">
     <div class="container-fluid" style="padding:0;">
@@ -31,7 +44,7 @@ $userRole = $_SESSION['role'] ?? '';
                         <i class="fas fa-search me-1"></i>Explore
                     </a>
                 </li>
-                <!-- Always show appointments link - FIXED -->
+                <!-- Always show appointments link -->
                 <li class="nav-item">
                     <a class="nav-link<?php if(basename($_SERVER['PHP_SELF']) == 'appointment.php') echo ' active'; ?>" 
                        href="../pages/appointment.php">
@@ -56,43 +69,24 @@ $userRole = $_SESSION['role'] ?? '';
                                     </div>
                                     <div class="text-center">
                                         <div class="fw-semibold"><?= htmlspecialchars($userFirstName . ' ' . $userLastName) ?></div>
-                                        <small class="text-muted"><?= ucfirst($userRole) ?> Member</small>
+                                        <small class="text-muted"><?= $roleDisplayName ?></small>
                                     </div>
                                 </div>
                             </li>
                             <li><hr class="dropdown-divider"></li>
                             
-                            <!-- Quick Stats -->
-                            <li class="px-3 py-2">
-                                <div class="row text-center">
-                                    <div class="col-4">
-                                        <div class="stat-number">0</div>
-                                        <small class="text-muted">Appointments</small>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="stat-number">1</div>
-                                        <small class="text-muted">Favorites</small>
-                                    </div>
-                                    <div class="col-4">
-                                        <div class="stat-number">0</div>
-                                        <small class="text-muted">Views</small>
-                                    </div>
-                                </div>
-                            </li>
-                            <li><hr class="dropdown-divider"></li>
-                            
-                            <!-- Navigation Links -->
+                            <!-- Navigation Links (role-based) -->
                             <li>
-                                <a class="dropdown-item" href="../client/dashboard.php">
+                                <a class="dropdown-item" href="<?= $dashboardPath ?>">
                                     <i class="fas fa-chart-pie me-2 text-primary"></i>
                                     <div>
                                         <div class="fw-semibold">Dashboard</div>
-                                        <small class="text-muted">Overview & Statistics</small>
+                                        <small class="text-muted">Overview & <?= $userRole === 'agent' ? 'Analytics' : 'Statistics' ?></small>
                                     </div>
                                 </a>
                             </li>
                             <li>
-                                <a class="dropdown-item" href="../client/account.php">
+                                <a class="dropdown-item" href="<?= $accountPath ?>">
                                     <i class="fas fa-user-cog me-2 text-warning"></i>
                                     <div>
                                         <div class="fw-semibold">Account Settings</div>
@@ -100,24 +94,47 @@ $userRole = $_SESSION['role'] ?? '';
                                     </div>
                                 </a>
                             </li>
-                            <li>
-                                <a class="dropdown-item" href="../client/dashboard.php?section=favorites">
-                                    <i class="fas fa-heart me-2 text-danger"></i>
-                                    <div>
-                                        <div class="fw-semibold">My Favorites</div>
-                                        <small class="text-muted">Saved Properties</small>
-                                    </div>
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="../pages/appointment.php">
-                                    <i class="fas fa-calendar-alt me-2 text-success"></i>
-                                    <div>
-                                        <div class="fw-semibold">Appointments</div>
-                                        <small class="text-muted">Schedule & History</small>
-                                    </div>
-                                </a>
-                            </li>
+                            
+                            <?php if ($userRole === 'agent'): ?>
+                                <li>
+                                    <a class="dropdown-item" href="../agent/properties.php">
+                                        <i class="fas fa-home me-2 text-success"></i>
+                                        <div>
+                                            <div class="fw-semibold">Manage Properties</div>
+                                            <small class="text-muted">Listings & Portfolio</small>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="../agent/appointments.php">
+                                        <i class="fas fa-calendar-check me-2 text-info"></i>
+                                        <div>
+                                            <div class="fw-semibold">Appointments</div>
+                                            <small class="text-muted">Schedule & Meetings</small>
+                                        </div>
+                                    </a>
+                                </li>
+                            <?php elseif ($userRole === 'client'): ?>
+                                <li>
+                                    <a class="dropdown-item" href="../client/dashboard.php?section=favorites">
+                                        <i class="fas fa-heart me-2 text-danger"></i>
+                                        <div>
+                                            <div class="fw-semibold">My Favorites</div>
+                                            <small class="text-muted">Saved Properties</small>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="../pages/appointment.php">
+                                        <i class="fas fa-calendar-alt me-2 text-success"></i>
+                                        <div>
+                                            <div class="fw-semibold">Appointments</div>
+                                            <small class="text-muted">Schedule & History</small>
+                                        </div>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
+                            
                             <li><hr class="dropdown-divider"></li>
                             
                             <!-- Logout -->
@@ -141,7 +158,7 @@ $userRole = $_SESSION['role'] ?? '';
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end account-dropdown-menu" aria-labelledby="accountDropdown">
                             <li class="dropdown-header text-center">
-                                <i class="fas fa-home fa-2x text-primary mb-2" style="margin-top: 350px;"></i>
+                                <i class="fas fa-home fa-2x text-primary mb-2"></i>
                                 <div class="fw-semibold">Welcome to Omnes Immobilier</div>
                                 <small class="text-muted">Your premium real estate partner</small>
                             </li>

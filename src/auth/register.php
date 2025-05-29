@@ -8,10 +8,10 @@ if (isLoggedIn()) {
     $role = $_SESSION['role'];
     switch ($role) {
         case 'admin':
-            redirect('../client/dashboard.php'); // Temporarily redirect to client dashboard
+            redirect('../admin/dashboard.php');
             break;
         case 'agent':
-            redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
+            redirect('../agent/dashboard.php');
             break;
         case 'client':
         default:
@@ -33,6 +33,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         'phone' => trim($_POST['phone'] ?? ''),
         'role' => $_POST['role'] ?? 'client'
     ];
+    
+    // Agent-specific fields
+    $agent_data = [];
+    if ($form_data['role'] === 'agent') {
+        $agent_data = [
+            'license_number' => trim($_POST['license_number'] ?? ''),
+            'years_experience' => (int)($_POST['years_experience'] ?? 0),
+            'bio' => trim($_POST['bio'] ?? ''),
+            'agency_name' => trim($_POST['agency_name'] ?? ''),
+            'agency_address' => trim($_POST['agency_address'] ?? ''),
+            'agency_phone' => trim($_POST['agency_phone'] ?? ''),
+            'agency_email' => trim(strtolower($_POST['agency_email'] ?? '')),
+            'languages_spoken' => $_POST['languages_spoken'] ?? []
+        ];
+    }
     
     $password = $_POST['password'] ?? '';
     $password_confirm = $_POST['password_confirm'] ?? '';
@@ -82,6 +97,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $validation_errors['role'] = 'Please select a valid account type.';
     }
 
+    // Agent-specific validation
+    if ($form_data['role'] === 'agent') {
+        if (empty($agent_data['agency_name'])) {
+            $validation_errors['agency_name'] = 'Agency name is required for agents.';
+        }
+        
+        if (!empty($agent_data['agency_email']) && !filter_var($agent_data['agency_email'], FILTER_VALIDATE_EMAIL)) {
+            $validation_errors['agency_email'] = 'Please enter a valid agency email address.';
+        }
+        
+        if (!empty($agent_data['agency_phone']) && !preg_match('/^[+]?[0-9\s\-\(\)\.]{10,}$/', $agent_data['agency_phone'])) {
+            $validation_errors['agency_phone'] = 'Please enter a valid agency phone number.';
+        }
+        
+        if ($agent_data['years_experience'] < 0 || $agent_data['years_experience'] > 50) {
+            $validation_errors['years_experience'] = 'Years of experience must be between 0 and 50.';
+        }
+    }
+
     if (!isset($_POST['terms'])) {
         $validation_errors['terms'] = 'You must accept the Terms of Use and Privacy Policy.';
     }
@@ -101,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Hash the password with enhanced security
                 $password_hash = password_hash($password, PASSWORD_DEFAULT, ['cost' => 12]);
 
-                // Insert into users table (matches your database structure)
+                // Insert into users table
                 $stmt = $pdo->prepare("INSERT INTO users (first_name, last_name, email, password_hash, phone, role, created_at) 
                                        VALUES (:first_name, :last_name, :email, :password_hash, :phone, :role, NOW())");
                 $stmt->execute([
@@ -115,33 +149,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
                 $user_id = $pdo->lastInsertId();
 
-                // Role-specific table insertions (FIXED to match your database structure)
+                // Role-specific table insertions
                 if ($form_data['role'] === 'agent') {
-                    // Insert into agents table with columns that exist in your database
-                    $agent_stmt = $pdo->prepare("INSERT INTO agents (user_id, cv_file_path, profile_picture_path, agency_name, agency_address, agency_phone, agency_email) 
-                                                 VALUES (:user_id, :cv_file_path, :profile_picture_path, :agency_name, :agency_address, :agency_phone, :agency_email)");
+                    // Insert into agents table with actual form data
+                    $agent_stmt = $pdo->prepare("INSERT INTO agents (
+                        user_id, cv_file_path, profile_picture_path, agency_name, agency_address, 
+                        agency_phone, agency_email, license_number, languages_spoken, 
+                        years_experience, commission_rate, bio, average_rating, total_sales, total_transactions
+                    ) VALUES (
+                        :user_id, :cv_file_path, :profile_picture_path, :agency_name, :agency_address,
+                        :agency_phone, :agency_email, :license_number, :languages_spoken,
+                        :years_experience, :commission_rate, :bio, :average_rating, :total_sales, :total_transactions
+                    )");
+                    
                     $agent_stmt->execute([
                         'user_id' => $user_id,
-                        'cv_file_path' => '', // Empty for now
-                        'profile_picture_path' => '', // Empty for now
-                        'agency_name' => 'Independent Agent',
-                        'agency_address' => 'To be specified',
-                        'agency_phone' => $form_data['phone'],
-                        'agency_email' => $form_data['email']
+                        'cv_file_path' => '',
+                        'profile_picture_path' => '',
+                        'agency_name' => $agent_data['agency_name'] ?: 'Independent Agent',
+                        'agency_address' => $agent_data['agency_address'],
+                        'agency_phone' => $agent_data['agency_phone'] ?: $form_data['phone'],
+                        'agency_email' => $agent_data['agency_email'] ?: $form_data['email'],
+                        'license_number' => $agent_data['license_number'],
+                        'languages_spoken' => json_encode($agent_data['languages_spoken']),
+                        'years_experience' => $agent_data['years_experience'],
+                        'commission_rate' => 3.00, // Default commission rate
+                        'bio' => $agent_data['bio'],
+                        'average_rating' => 0.00,
+                        'total_sales' => 0.00,
+                        'total_transactions' => 0
                     ]);
                 } elseif ($form_data['role'] === 'client') {
-                    // Insert into clients table with columns that exist in your database
+                    // Insert into clients table
                     $client_stmt = $pdo->prepare("INSERT INTO clients (user_id, address_line1, address_line2, city, state, postal_code, country, financial_info) 
                                                   VALUES (:user_id, :address_line1, :address_line2, :city, :state, :postal_code, :country, :financial_info)");
                     $client_stmt->execute([
                         'user_id' => $user_id,
-                        'address_line1' => '', // Empty for now
-                        'address_line2' => '', // Empty for now
-                        'city' => '',          // Empty for now
-                        'state' => '',         // Empty for now
-                        'postal_code' => '',   // Empty for now
-                        'country' => 'France', // Default country
-                        'financial_info' => '{}' // Empty JSON object
+                        'address_line1' => '',
+                        'address_line2' => '',
+                        'city' => '',
+                        'state' => '',
+                        'postal_code' => '',
+                        'country' => 'France',
+                        'financial_info' => '{}'
                     ]);
                 }
 
@@ -153,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
 
                 // AUTOMATICALLY LOG IN THE USER AFTER REGISTRATION
-                session_regenerate_id(true); // Prevent session fixation
+                session_regenerate_id(true);
                 
                 $_SESSION['user_id'] = $user_id;
                 $_SESSION['first_name'] = $form_data['first_name'];
@@ -174,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 switch ($form_data['role']) {
                     case 'agent':
                         $_SESSION['success_message'] = 'Welcome to Omnes Immobilier, ' . $form_data['first_name'] . '! Your agent account has been created successfully. You can now manage properties and connect with clients.';
-                        redirect('../agent/dashboard.php'); // Temporarily redirect to client dashboard
+                        redirect('../agent/dashboard.php');
                         break;
                     case 'client':
                     default:
@@ -192,6 +242,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $error = 'Please correct the errors below and try again.';
     }
 }
+
+// Available languages for agents
+$available_languages = [
+    'french' => 'French',
+    'english' => 'English',
+    'spanish' => 'Spanish',
+    'italian' => 'Italian',
+    'german' => 'German',
+    'arabic' => 'Arabic',
+    'chinese' => 'Chinese',
+    'portuguese' => 'Portuguese'
+];
 
 ob_start();
 ?>
@@ -227,6 +289,7 @@ ob_start();
             <?php else: ?>
 
             <form method="POST" action="" id="registerForm" novalidate class="needs-validation">
+                <!-- Basic Information -->
                 <div class="row">
                     <div class="col-md-6">
                         <div class="form-floating mb-3">
@@ -307,11 +370,13 @@ ob_start();
                     <?php endif; ?>
                 </div>
 
+                <!-- Account Type Selection -->
                 <div class="form-floating mb-3">
                     <select class="form-select <?= isset($validation_errors['role']) ? 'is-invalid' : '' ?>" 
                             id="role" 
                             name="role" 
-                            required>
+                            required
+                            onchange="toggleAgentFields()">
                         <option value="" disabled <?= empty($form_data['role']) ? 'selected' : '' ?>>Choose your account type</option>
                         <option value="client" <?= ($form_data['role'] ?? 'client') === 'client' ? 'selected' : '' ?>>
                             Client – I'm looking for properties
@@ -330,6 +395,165 @@ ob_start();
                     <?php endif; ?>
                 </div>
 
+                <!-- Agent-Specific Fields (Hidden by default) -->
+                <div id="agentFields" class="d-none">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Agent Information</strong> - Please provide your professional details
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="text" 
+                                       class="form-control <?= isset($validation_errors['license_number']) ? 'is-invalid' : '' ?>" 
+                                       id="license_number" 
+                                       name="license_number"
+                                       placeholder="License Number"
+                                       value="<?= htmlspecialchars($agent_data['license_number'] ?? '') ?>">
+                                <label for="license_number">
+                                    <i class="fas fa-id-card me-2"></i>License Number
+                                </label>
+                                <?php if (isset($validation_errors['license_number'])): ?>
+                                    <div class="invalid-feedback">
+                                        <?= htmlspecialchars($validation_errors['license_number']) ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="number" 
+                                       class="form-control <?= isset($validation_errors['years_experience']) ? 'is-invalid' : '' ?>" 
+                                       id="years_experience" 
+                                       name="years_experience"
+                                       placeholder="Years of Experience"
+                                       min="0" max="50"
+                                       value="<?= htmlspecialchars($agent_data['years_experience'] ?? '0') ?>">
+                                <label for="years_experience">
+                                    <i class="fas fa-briefcase me-2"></i>Years of Experience
+                                </label>
+                                <?php if (isset($validation_errors['years_experience'])): ?>
+                                    <div class="invalid-feedback">
+                                        <?= htmlspecialchars($validation_errors['years_experience']) ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <input type="text" 
+                               class="form-control <?= isset($validation_errors['agency_name']) ? 'is-invalid' : '' ?>" 
+                               id="agency_name" 
+                               name="agency_name"
+                               placeholder="Agency Name"
+                               value="<?= htmlspecialchars($agent_data['agency_name'] ?? '') ?>">
+                        <label for="agency_name">
+                            <i class="fas fa-building me-2"></i>Agency Name *
+                        </label>
+                        <?php if (isset($validation_errors['agency_name'])): ?>
+                            <div class="invalid-feedback">
+                                <?= htmlspecialchars($validation_errors['agency_name']) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <textarea class="form-control <?= isset($validation_errors['agency_address']) ? 'is-invalid' : '' ?>" 
+                                  id="agency_address" 
+                                  name="agency_address"
+                                  placeholder="Agency Address"
+                                  style="height: 100px"><?= htmlspecialchars($agent_data['agency_address'] ?? '') ?></textarea>
+                        <label for="agency_address">
+                            <i class="fas fa-map-marker-alt me-2"></i>Agency Address
+                        </label>
+                        <?php if (isset($validation_errors['agency_address'])): ?>
+                            <div class="invalid-feedback">
+                                <?= htmlspecialchars($validation_errors['agency_address']) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="tel" 
+                                       class="form-control <?= isset($validation_errors['agency_phone']) ? 'is-invalid' : '' ?>" 
+                                       id="agency_phone" 
+                                       name="agency_phone"
+                                       placeholder="Agency Phone"
+                                       value="<?= htmlspecialchars($agent_data['agency_phone'] ?? '') ?>">
+                                <label for="agency_phone">
+                                    <i class="fas fa-phone me-2"></i>Agency Phone
+                                </label>
+                                <?php if (isset($validation_errors['agency_phone'])): ?>
+                                    <div class="invalid-feedback">
+                                        <?= htmlspecialchars($validation_errors['agency_phone']) ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-floating mb-3">
+                                <input type="email" 
+                                       class="form-control <?= isset($validation_errors['agency_email']) ? 'is-invalid' : '' ?>" 
+                                       id="agency_email" 
+                                       name="agency_email"
+                                       placeholder="Agency Email"
+                                       value="<?= htmlspecialchars($agent_data['agency_email'] ?? '') ?>">
+                                <label for="agency_email">
+                                    <i class="fas fa-envelope me-2"></i>Agency Email
+                                </label>
+                                <?php if (isset($validation_errors['agency_email'])): ?>
+                                    <div class="invalid-feedback">
+                                        <?= htmlspecialchars($validation_errors['agency_email']) ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <textarea class="form-control <?= isset($validation_errors['bio']) ? 'is-invalid' : '' ?>" 
+                                  id="bio" 
+                                  name="bio"
+                                  placeholder="Professional Bio"
+                                  style="height: 120px"><?= htmlspecialchars($agent_data['bio'] ?? '') ?></textarea>
+                        <label for="bio">
+                            <i class="fas fa-user-edit me-2"></i>Professional Bio
+                        </label>
+                        <div class="form-text">Tell clients about your experience and expertise</div>
+                        <?php if (isset($validation_errors['bio'])): ?>
+                            <div class="invalid-feedback">
+                                <?= htmlspecialchars($validation_errors['bio']) ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Languages Spoken -->
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-language me-2"></i>Languages Spoken
+                        </label>
+                        <div class="row">
+                            <?php foreach ($available_languages as $key => $label): ?>
+                                <div class="col-md-4 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="lang_<?= $key ?>" name="languages_spoken[]" value="<?= $key ?>"
+                                               <?= in_array($key, $agent_data['languages_spoken'] ?? []) ? 'checked' : '' ?>>
+                                        <label class="form-check-label" for="lang_<?= $key ?>">
+                                            <?= $label ?>
+                                        </label>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password Fields -->
                 <div class="form-floating mb-3">
                     <input type="password" 
                            class="form-control <?= isset($validation_errors['password']) ? 'is-invalid' : '' ?>" 
@@ -417,6 +641,100 @@ ob_start();
         </div>
     </div>
 </div>
+
+<script>
+// Toggle agent fields based on role selection
+function toggleAgentFields() {
+    const roleSelect = document.getElementById('role');
+    const agentFields = document.getElementById('agentFields');
+    const submitText = document.getElementById('submitText');
+    
+    if (roleSelect.value === 'agent') {
+        agentFields.classList.remove('d-none');
+        submitText.textContent = 'Create Agent Account';
+        
+        // Make agency name required for agents
+        document.getElementById('agency_name').required = true;
+    } else {
+        agentFields.classList.add('d-none');
+        submitText.textContent = 'Create Professional Account';
+        
+        // Remove required from agency fields
+        document.getElementById('agency_name').required = false;
+    }
+}
+
+// Initialize the form state on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleAgentFields();
+    
+    // Set up form validation
+    const form = document.getElementById('registerForm');
+    form.addEventListener('submit', function(event) {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        form.classList.add('was-validated');
+    });
+});
+
+// Password strength indicator
+document.getElementById('password').addEventListener('input', function() {
+    const password = this.value;
+    const strengthDiv = document.getElementById('passwordStrength');
+    const strengthText = document.getElementById('strengthText');
+    const strengthBar = document.getElementById('strengthBar');
+    
+    if (password.length > 0) {
+        strengthDiv.classList.remove('d-none');
+        
+        let strength = 0;
+        let strengthLabel = '';
+        
+        // Check password criteria
+        if (password.length >= 8) strength++;
+        if (/[a-z]/.test(password)) strength++;
+        if (/[A-Z]/.test(password)) strength++;
+        if (/\d/.test(password)) strength++;
+        if (/[^a-zA-Z\d]/.test(password)) strength++;
+        
+        // Set strength level
+        switch (strength) {
+            case 0:
+            case 1:
+                strengthLabel = 'Very Weak';
+                strengthBar.className = 'progress-bar bg-danger';
+                strengthBar.style.width = '20%';
+                break;
+            case 2:
+                strengthLabel = 'Weak';
+                strengthBar.className = 'progress-bar bg-warning';
+                strengthBar.style.width = '40%';
+                break;
+            case 3:
+                strengthLabel = 'Fair';
+                strengthBar.className = 'progress-bar bg-info';
+                strengthBar.style.width = '60%';
+                break;
+            case 4:
+                strengthLabel = 'Good';
+                strengthBar.className = 'progress-bar bg-primary';
+                strengthBar.style.width = '80%';
+                break;
+            case 5:
+                strengthLabel = 'Strong';
+                strengthBar.className = 'progress-bar bg-success';
+                strengthBar.style.width = '100%';
+                break;
+        }
+        
+        strengthText.textContent = `Password strength: ${strengthLabel}`;
+    } else {
+        strengthDiv.classList.add('d-none');
+    }
+});
+</script>
 
 <?php
 $content = ob_get_clean();

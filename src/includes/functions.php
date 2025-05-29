@@ -1,7 +1,7 @@
 <?php
 // ========================================
-// HELPER FUNCTIONS
-// Global utility functions used across the application
+// ENHANCED HELPER FUNCTIONS
+// Global utility functions with role-based routing and improved functionality
 // ========================================
 
 /**
@@ -47,8 +47,56 @@ function requireRole($required_roles) {
     }
     
     if (!in_array($_SESSION['role'], $required_roles)) {
-        redirect('../index.php?error=' . urlencode('Accès non autorisé'));
+        // Redirect to appropriate dashboard based on user role
+        $dashboard_url = getDashboardUrl($_SESSION['role']);
+        redirect($dashboard_url . '?error=' . urlencode('Access denied for this section'));
     }
+}
+
+/**
+ * Get dashboard URL based on user role
+ * @param string $role
+ * @return string
+ */
+function getDashboardUrl($role) {
+    switch ($role) {
+        case 'agent':
+            return '../agent/dashboard.php';
+        case 'admin':
+            return '../admin/dashboard.php';
+        case 'client':
+        default:
+            return '../client/dashboard.php';
+    }
+}
+
+/**
+ * Get account URL based on user role
+ * @param string $role
+ * @return string
+ */
+function getAccountUrl($role) {
+    switch ($role) {
+        case 'agent':
+            return '../agent/account.php';
+        case 'admin':
+            return '../admin/account.php';
+        case 'client':
+        default:
+            return '../client/account.php';
+    }
+}
+
+/**
+ * Redirect user to appropriate dashboard based on role
+ */
+function redirectToDashboard() {
+    if (!isLoggedIn()) {
+        redirect('../auth/login.php');
+    }
+    
+    $dashboard_url = getDashboardUrl($_SESSION['role']);
+    redirect($dashboard_url);
 }
 
 /**
@@ -62,9 +110,62 @@ function getCurrentUser() {
     
     global $pdo;
     
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-    $stmt->execute([$_SESSION['user_id']]);
-    return $stmt->fetch(PDO::FETCH_ASSOC);
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        error_log("getCurrentUser error: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Get user statistics based on role
+ * @param int $user_id
+ * @param string $role
+ * @return array
+ */
+function getUserStats($user_id, $role) {
+    global $pdo;
+    
+    $stats = [
+        'appointments' => 0,
+        'properties' => 0,
+        'favorites' => 0,
+        'messages' => 0,
+        'views' => 0
+    ];
+    
+    try {
+        if ($role === 'client') {
+            $query = "SELECT 
+                     (SELECT COUNT(*) FROM appointments WHERE client_id = ?) as appointments,
+                     (SELECT COUNT(*) FROM favorites WHERE user_id = ?) as favorites,
+                     (SELECT COUNT(*) FROM property_views WHERE user_id = ?) as views";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([$user_id, $user_id, $user_id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($result) {
+                $stats = array_merge($stats, $result);
+            }
+        } elseif ($role === 'agent') {
+            $query = "SELECT 
+                     (SELECT COUNT(*) FROM properties WHERE agent_id = ?) as properties,
+                     (SELECT COUNT(*) FROM appointments WHERE agent_id = ? AND status = 'scheduled') as appointments,
+                     (SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND is_read = 0) as messages";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([$user_id, $user_id, $user_id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($result) {
+                $stats = array_merge($stats, $result);
+            }
+        }
+    } catch (Exception $e) {
+        error_log("getUserStats error: " . $e->getMessage());
+    }
+    
+    return $stats;
 }
 
 /**
@@ -264,7 +365,7 @@ function getRoleDisplayName($role) {
         case 'admin':
             return 'Administrator';
         case 'agent':
-            return 'Real Estate Agent';
+            return 'Licensed Agent';
         case 'client':
             return 'Client';
         default:
@@ -295,6 +396,10 @@ function hasPermission($action) {
             return $role === 'client';
         case 'manage_appointments':
             return in_array($role, ['admin', 'agent']);
+        case 'view_analytics':
+            return in_array($role, ['admin', 'agent']);
+        case 'modify_system_settings':
+            return $role === 'admin';
         default:
             return false;
     }
@@ -329,6 +434,14 @@ function getFileExtension($filename) {
     return strtolower(pathinfo($filename, PATHINFO_EXTENSION));
 }
 
+function requireAgent() {
+    requireRole('agent');
+}
+
+function requireAdmin() {
+    requireRole('admin');
+}
+
 /**
  * Check if file type is allowed
  * @param string $filename
@@ -338,5 +451,215 @@ function getFileExtension($filename) {
 function isAllowedFileType($filename, $allowed_types = ['jpg', 'jpeg', 'png', 'gif', 'pdf']) {
     $extension = getFileExtension($filename);
     return in_array($extension, $allowed_types);
+}
+
+/**
+ * Get breadcrumb navigation based on current page
+ * @param string $current_page
+ * @param string $role
+ * @return array
+ */
+function getBreadcrumb($current_page, $role = 'client') {
+    $breadcrumb = [
+        ['name' => 'Home', 'url' => '../pages/home.php', 'icon' => 'fas fa-home']
+    ];
+    
+    switch ($current_page) {
+        case 'dashboard':
+            $breadcrumb[] = ['name' => 'Dashboard', 'url' => getDashboardUrl($role), 'icon' => 'fas fa-chart-pie'];
+            break;
+        case 'account':
+            $breadcrumb[] = ['name' => 'Dashboard', 'url' => getDashboardUrl($role), 'icon' => 'fas fa-chart-pie'];
+            $breadcrumb[] = ['name' => 'Account Settings', 'url' => getAccountUrl($role), 'icon' => 'fas fa-user-cog'];
+            break;
+        case 'properties':
+            if ($role === 'agent') {
+                $breadcrumb[] = ['name' => 'Agent Portal', 'url' => '../agent/dashboard.php', 'icon' => 'fas fa-chart-pie'];
+                $breadcrumb[] = ['name' => 'Properties', 'url' => '../agent/properties.php', 'icon' => 'fas fa-home'];
+            }
+            break;
+        case 'appointments':
+            $breadcrumb[] = ['name' => 'Dashboard', 'url' => getDashboardUrl($role), 'icon' => 'fas fa-chart-pie'];
+            $breadcrumb[] = ['name' => 'Appointments', 'url' => '../pages/appointment.php', 'icon' => 'fas fa-calendar-alt'];
+            break;
+        case 'explore':
+            $breadcrumb[] = ['name' => 'Explore Properties', 'url' => '../pages/explore.php', 'icon' => 'fas fa-search'];
+            break;
+    }
+    
+    return $breadcrumb;
+}
+
+/**
+ * Render breadcrumb HTML
+ * @param array $breadcrumb
+ * @return string
+ */
+function renderBreadcrumb($breadcrumb) {
+    if (empty($breadcrumb)) {
+        return '';
+    }
+    
+    $html = '<nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">';
+    
+    $total = count($breadcrumb);
+    foreach ($breadcrumb as $index => $item) {
+        $isLast = ($index === $total - 1);
+        
+        if ($isLast) {
+            $html .= '<li class="breadcrumb-item active" aria-current="page">';
+            if (isset($item['icon'])) {
+                $html .= '<i class="' . $item['icon'] . ' me-1"></i>';
+            }
+            $html .= $item['name'] . '</li>';
+        } else {
+            $html .= '<li class="breadcrumb-item">';
+            $html .= '<a href="' . $item['url'] . '">';
+            if (isset($item['icon'])) {
+                $html .= '<i class="' . $item['icon'] . ' me-1"></i>';
+            }
+            $html .= $item['name'] . '</a></li>';
+        }
+    }
+    
+    $html .= '</ol></nav>';
+    return $html;
+}
+
+/**
+ * Set success message in session
+ * @param string $message
+ */
+function setSuccessMessage($message) {
+    $_SESSION['success_message'] = $message;
+}
+
+/**
+ * Set error message in session
+ * @param string $message
+ */
+function setErrorMessage($message) {
+    $_SESSION['error_message'] = $message;
+}
+
+/**
+ * Get and clear success message from session
+ * @return string|null
+ */
+function getSuccessMessage() {
+    if (isset($_SESSION['success_message'])) {
+        $message = $_SESSION['success_message'];
+        unset($_SESSION['success_message']);
+        return $message;
+    }
+    return null;
+}
+
+/**
+ * Get and clear error message from session
+ * @return string|null
+ */
+function getErrorMessage() {
+    if (isset($_SESSION['error_message'])) {
+        $message = $_SESSION['error_message'];
+        unset($_SESSION['error_message']);
+        return $message;
+    }
+    return null;
+}
+
+/**
+ * Check if user can access a specific property
+ * @param int $property_id
+ * @param int $user_id
+ * @param string $role
+ * @return bool
+ */
+function canAccessProperty($property_id, $user_id, $role) {
+    global $pdo;
+    
+    if ($role === 'admin') {
+        return true; // Admins can access all properties
+    }
+    
+    if ($role === 'agent') {
+        try {
+            $stmt = $pdo->prepare("SELECT id FROM properties WHERE id = ? AND agent_id = ?");
+            $stmt->execute([$property_id, $user_id]);
+            return $stmt->rowCount() > 0;
+        } catch (Exception $e) {
+            error_log("canAccessProperty error: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    // Clients can access all available properties
+    return $role === 'client';
+}
+
+/**
+ * Generate user avatar initials
+ * @param string $first_name
+ * @param string $last_name
+ * @return string
+ */
+function getAvatarInitials($first_name, $last_name) {
+    $first_initial = !empty($first_name) ? strtoupper($first_name[0]) : '';
+    $last_initial = !empty($last_name) ? strtoupper($last_name[0]) : '';
+    return $first_initial . $last_initial;
+}
+
+/**
+ * Safe database query execution
+ * @param PDO $pdo
+ * @param string $query
+ * @param array $params
+ * @return array|false
+ */
+function safeQuery($pdo, $query, $params = []) {
+    try {
+        $stmt = $pdo->prepare($query);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        error_log("Database query error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Safe database update/insert execution
+ * @param PDO $pdo
+ * @param string $query
+ * @param array $params
+ * @return bool
+ */
+function safeExecute($pdo, $query, $params = []) {
+    try {
+        $stmt = $pdo->prepare($query);
+        return $stmt->execute($params);
+    } catch (Exception $e) {
+        error_log("Database execute error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Get default theme for user
+ * @return string
+ */
+function getDefaultTheme() {
+    return $_SESSION['user_theme'] ?? 'light';
+}
+
+/**
+ * Set user theme preference
+ * @param string $theme
+ */
+function setUserTheme($theme) {
+    if (in_array($theme, ['light', 'dark'])) {
+        $_SESSION['user_theme'] = $theme;
+    }
 }
 ?>

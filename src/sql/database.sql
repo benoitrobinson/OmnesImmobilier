@@ -30,12 +30,20 @@ CREATE TABLE clients(
 -- Create Agents table
 CREATE TABLE agents(
     user_id INT PRIMARY KEY,
-    cv_file_path VARCHAR(255) NOT NULL,
-    profile_picture_path VARCHAR(255),
-    agency_name VARCHAR(255) NOT NULL,
-    agency_address VARCHAR(255) NOT NULL,
-    agency_phone VARCHAR(15) NOT NULL,
-    agency_email VARCHAR(100) NOT NULL UNIQUE,
+    cv_file_path VARCHAR(255) DEFAULT '',
+    profile_picture_path VARCHAR(255) DEFAULT '',
+    agency_name VARCHAR(255) NOT NULL DEFAULT 'Independent Agent',
+    agency_address VARCHAR(255) DEFAULT '',
+    agency_phone VARCHAR(15) DEFAULT '',
+    agency_email VARCHAR(100) DEFAULT '',
+    license_number VARCHAR(50) DEFAULT '',
+    languages_spoken JSON DEFAULT '[]',
+    years_experience INT DEFAULT 0,
+    commission_rate DECIMAL(5,2) DEFAULT 0.00,
+    bio TEXT DEFAULT '',
+    average_rating DECIMAL(3,2) DEFAULT 0.00,
+    total_sales DECIMAL(15,2) DEFAULT 0.00,
+    total_transactions INT DEFAULT 0,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -45,18 +53,44 @@ CREATE TABLE properties(
     agent_id INT NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
-    price DECIMAL(10, 2) NOT NULL,
-    address_line1 VARCHAR(255) NOT NULL,
-    city VARCHAR(100) NOT NULL,
-    state VARCHAR(100) NOT NULL,
-    postal_code VARCHAR(20) NOT NULL,
-    country VARCHAR(100) NOT NULL,
+    price DECIMAL(12, 2) NOT NULL,
     property_type ENUM('house', 'apartment', 'land', 'commercial', 'rental', 'auction') NOT NULL,
-    status ENUM('available', 'sold', 'rented') DEFAULT 'available',
+    listing_type ENUM('sale', 'rent', 'auction') DEFAULT 'sale',
+    status ENUM('available', 'sold', 'rented', 'pending', 'withdrawn') DEFAULT 'available',
+    
+    -- Address Information
+    address_line1 VARCHAR(255) NOT NULL,
+    address_line2 VARCHAR(255),
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100),
+    postal_code VARCHAR(20),
+    country VARCHAR(100) DEFAULT 'France',
+    
+    -- Property Details
+    bedrooms INT DEFAULT 0,
+    bathrooms INT DEFAULT 0,
+    total_rooms INT DEFAULT 0,
+    living_area DECIMAL(8,2) DEFAULT 0,
+    lot_size DECIMAL(10,2) DEFAULT 0,
+    year_built INT DEFAULT 0,
+    
+    -- Features
+    has_parking BOOLEAN DEFAULT FALSE,
+    parking_spaces INT DEFAULT 0,
+    has_balcony BOOLEAN DEFAULT FALSE,
+    has_terrace BOOLEAN DEFAULT FALSE,
+    has_garden BOOLEAN DEFAULT FALSE,
+    heating_type VARCHAR(50) DEFAULT '',
+    energy_rating VARCHAR(10) DEFAULT '',
+    
+    -- Timestamps
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (agent_id) REFERENCES agents(user_id) ON DELETE CASCADE
+    
+    -- Foreign Key
+    FOREIGN KEY (agent_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
 
 -- Create Availability table(for agents)
 CREATE TABLE availability(

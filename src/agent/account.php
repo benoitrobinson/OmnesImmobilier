@@ -14,9 +14,9 @@ $db = $database->getConnection();
 $error = '';
 $success = '';
 
-// Get complete agent information
+// Get complete agent information (removed specializations from query)
 $query = "SELECT u.*, a.cv_file_path, a.profile_picture_path, a.agency_name, a.agency_address,
-                 a.agency_phone, a.agency_email, a.license_number, a.specializations, 
+                 a.agency_phone, a.agency_email, a.license_number, 
                  a.languages_spoken, a.years_experience, a.commission_rate, a.bio,
                  a.average_rating, a.total_sales, a.total_transactions
           FROM users u 
@@ -38,11 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $phone = trim($_POST['phone'] ?? '');
         $new_email = trim($_POST['email'] ?? '');
         
-        // Agent-specific information
+        // Agent-specific information (removed specializations)
         $bio = trim($_POST['bio'] ?? '');
         $years_experience = (int)($_POST['years_experience'] ?? 0);
         $license_number = trim($_POST['license_number'] ?? '');
-        $specializations = $_POST['specializations'] ?? [];
         $languages_spoken = $_POST['languages_spoken'] ?? [];
         
         // Agency information
@@ -93,12 +92,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $update_user_stmt->bindParam(':user_id', $_SESSION['user_id']);
                     $update_user_stmt->execute();
                     
-                    // Update agents table
+                    // Update agents table (removed specializations)
                     $update_agent_query = "UPDATE agents SET 
                                           bio = :bio,
                                           years_experience = :years_experience,
                                           license_number = :license_number,
-                                          specializations = :specializations,
                                           languages_spoken = :languages_spoken,
                                           agency_name = :agency_name,
                                           agency_address = :agency_address,
@@ -110,7 +108,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $update_agent_stmt->bindParam(':bio', $bio);
                     $update_agent_stmt->bindParam(':years_experience', $years_experience);
                     $update_agent_stmt->bindParam(':license_number', $license_number);
-                    $update_agent_stmt->bindParam(':specializations', json_encode($specializations));
                     $update_agent_stmt->bindParam(':languages_spoken', json_encode($languages_spoken));
                     $update_agent_stmt->bindParam(':agency_name', $agency_name);
                     $update_agent_stmt->bindParam(':agency_address', $agency_address);
@@ -174,22 +171,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Parse JSON fields
-$specializations = !empty($agent['specializations']) ? json_decode($agent['specializations'], true) : [];
+// Parse JSON fields (removed specializations)
 $languages_spoken = !empty($agent['languages_spoken']) ? json_decode($agent['languages_spoken'], true) : [];
 
-// Available options
-$available_specializations = [
-    'residential' => 'Residential Properties',
-    'commercial' => 'Commercial Properties', 
-    'luxury' => 'Luxury Properties',
-    'rental' => 'Rental Properties',
-    'land' => 'Land & Development',
-    'investment' => 'Investment Properties',
-    'new_construction' => 'New Construction',
-    'relocation' => 'Relocation Services'
-];
-
+// Available options (removed specializations)
 $available_languages = [
     'french' => 'French',
     'english' => 'English',
@@ -322,13 +307,13 @@ $available_languages = [
             box-shadow: 0 5px 15px rgba(44, 90, 160, 0.3);
         }
 
-        .specialization-grid {
+        .language-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
         }
 
-        .specialization-item {
+        .language-item {
             display: flex;
             align-items: center;
             padding: 1rem;
@@ -338,11 +323,11 @@ $available_languages = [
             transition: all 0.3s ease;
         }
 
-        .specialization-item:hover {
+        .language-item:hover {
             border-color: var(--agent-primary);
         }
 
-        .specialization-item input:checked + label {
+        .language-item input:checked + label {
             color: var(--agent-primary);
             font-weight: 600;
         }
@@ -382,7 +367,7 @@ $available_languages = [
                 padding: 1rem;
             }
             
-            .specialization-grid {
+            .language-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -408,14 +393,6 @@ $available_languages = [
     </header>
 
     <div class="settings-container">
-        <!-- Breadcrumb -->
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb mb-3">
-                <li class="breadcrumb-item"><a href="../pages/home.php"><i class="fas fa-home me-1"></i>Agent Portal</a></li>
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                <li class="breadcrumb-item active">Account Settings</li>
-            </ol>
-        </nav>
 
         <!-- Header -->
         <div class="settings-header">
@@ -536,27 +513,12 @@ $available_languages = [
                                           placeholder="Tell clients about your experience and expertise..."><?= htmlspecialchars($agent['bio'] ?? '') ?></textarea>
                             </div>
                             
-                            <!-- Specializations -->
-                            <div class="form-group-custom">
-                                <label class="form-label-custom">Specializations</label>
-                                <div class="specialization-grid">
-                                    <?php foreach ($available_specializations as $key => $label): ?>
-                                        <div class="specialization-item">
-                                            <input type="checkbox" class="form-check-input me-2" 
-                                                   id="spec_<?= $key ?>" name="specializations[]" value="<?= $key ?>"
-                                                   <?= in_array($key, $specializations) ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="spec_<?= $key ?>"><?= $label ?></label>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                            
                             <!-- Languages -->
                             <div class="form-group-custom">
                                 <label class="form-label-custom">Languages Spoken</label>
-                                <div class="specialization-grid">
+                                <div class="language-grid">
                                     <?php foreach ($available_languages as $key => $label): ?>
-                                        <div class="specialization-item">
+                                        <div class="language-item">
                                             <input type="checkbox" class="form-check-input me-2" 
                                                    id="lang_<?= $key ?>" name="languages_spoken[]" value="<?= $key ?>"
                                                    <?= in_array($key, $languages_spoken) ? 'checked' : '' ?>>
@@ -647,10 +609,10 @@ $available_languages = [
                             <a href="dashboard.php" class="btn btn-outline-primary">
                                 <i class="fas fa-chart-pie me-2"></i>Go to Dashboard
                             </a>
-                            <a href="properties.php" class="btn btn-outline-success">
+                            <a href="manage_properties.php" class="btn btn-outline-success">
                                 <i class="fas fa-home me-2"></i>Manage Properties
                             </a>
-                            <a href="appointments.php" class="btn btn-outline-warning">
+                            <a href="manage_appointments.php" class="btn btn-outline-warning">
                                 <i class="fas fa-calendar-alt me-2"></i>View Appointments
                             </a>
                             <a href="messages.php" class="btn btn-outline-info">
@@ -692,5 +654,7 @@ $available_languages = [
 
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="../assets/js/agent_navigation.js"></script>
+
 </body>
 </html>

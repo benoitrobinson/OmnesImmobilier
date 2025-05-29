@@ -8,8 +8,8 @@ if (!isLoggedIn() || !isAgent()) {
     redirect('../auth/login.php');
 }
 
-$database = Database::getInstance();
-$db = $database->getConnection();
+// Use the global $pdo connection (not Database::getInstance())
+$db = $pdo;
 
 $error = '';
 $success = '';
@@ -54,8 +54,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $energy_rating = $_POST['energy_rating'] ?? '';
         
         // Validation
-        if (empty($title) || empty($description) || $price <= 0 || empty($property_type) || empty($address_line1) || empty($city)) {
-            $error = 'Please fill in all required fields.';
+        if (empty($title)) {
+            $error = 'Property title is required.';
+        } elseif (empty($description)) {
+            $error = 'Property description is required.';
+        } elseif ($price <= 0) {
+            $error = 'Please enter a valid price.';
+        } elseif (empty($property_type)) {
+            $error = 'Please select a property type.';
+        } elseif (empty($address_line1)) {
+            $error = 'Address is required.';
+        } elseif (empty($city)) {
+            $error = 'City is required.';
         } else {
             try {
                 if ($form_action === 'add_property') {
@@ -122,15 +132,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $params['property_id'] = $property_id;
                 }
                 
-                $stmt->execute($params);
-                $success = $message;
-                
-                if ($form_action === 'add_property') {
-                    $action = 'list'; // Redirect to list after adding
+                if ($stmt->execute($params)) {
+                    $success = $message;
+                    
+                    if ($form_action === 'add_property') {
+                        $action = 'list'; // Reset to list view after adding
+                    }
+                } else {
+                    $error = 'Database error occurred while saving the property.';
                 }
             } catch (PDOException $e) {
                 error_log("Property save error: " . $e->getMessage());
-                $error = 'Database error occurred.';
+                $error = 'Database error occurred. Please try again.';
             }
         }
     }
@@ -144,34 +157,69 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $query = "UPDATE properties SET status = :status, updated_at = NOW() 
                          WHERE id = :property_id AND agent_id = :agent_id";
                 $stmt = $db->prepare($query);
-                $stmt->execute([
+                if ($stmt->execute([
                     'status' => $status,
                     'property_id' => $property_id,
                     'agent_id' => $_SESSION['user_id']
-                ]);
-                $success = 'Property status updated successfully!';
+                ])) {
+                    $success = 'Property status updated successfully!';
+                } else {
+                    $error = 'Error updating property status.';
+                }
             } catch (PDOException $e) {
                 error_log("Status update error: " . $e->getMessage());
                 $error = 'Error updating property status.';
             }
         }
     }
+    
+    elseif ($form_action === 'delete_property') {
+        $property_id = $_POST['property_id'] ?? '';
+        
+        try {
+            // Check if property has any appointments
+            $check_query = "SELECT COUNT(*) as count FROM appointments WHERE property_id = ? AND status = 'scheduled'";
+            $check_stmt = $db->prepare($check_query);
+            $check_stmt->execute([$property_id]);
+            $result = $check_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result['count'] > 0) {
+                $error = 'Cannot delete property with scheduled appointments.';
+            } else {
+                $delete_query = "DELETE FROM properties WHERE id = ? AND agent_id = ?";
+                $delete_stmt = $db->prepare($delete_query);
+                if ($delete_stmt->execute([$property_id, $_SESSION['user_id']])) {
+                    $success = 'Property deleted successfully!';
+                } else {
+                    $error = 'Error deleting property.';
+                }
+            }
+        } catch (PDOException $e) {
+            error_log("Property delete error: " . $e->getMessage());
+            $error = 'Error deleting property.';
+        }
+    }
 }
 
-// Get agent's properties
+// Get agent's properties - FIXED QUERY
 $properties = [];
 try {
+    // Simple query without property_views table (since it doesn't exist)
     $query = "SELECT p.*, 
-                     (SELECT COUNT(*) FROM appointments WHERE property_id = p.id) as appointment_count,
-                     (SELECT COUNT(*) FROM property_views WHERE property_id = p.id) as view_count
+                     (SELECT COUNT(*) FROM appointments WHERE property_id = p.id) as appointment_count
               FROM properties p 
               WHERE p.agent_id = :agent_id 
               ORDER BY p.created_at DESC";
     $stmt = $db->prepare($query);
     $stmt->execute(['agent_id' => $_SESSION['user_id']]);
     $properties = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Debug: Log the number of properties found
+    error_log("Agent ID: " . $_SESSION['user_id'] . " - Properties found: " . count($properties));
+    
 } catch (Exception $e) {
     error_log("Properties fetch error: " . $e->getMessage());
+    $properties = []; // Ensure it's an array
 }
 
 // Get specific property for editing
@@ -203,6 +251,16 @@ $stats = [
     'total_value' => array_sum(array_column($properties, 'price')),
     'avg_price' => count($properties) > 0 ? array_sum(array_column($properties, 'price')) / count($properties) : 0
 ];
+
+// Debug: Show some info
+if (isset($_GET['debug'])) {
+    echo "<pre>";
+    echo "Agent ID: " . $_SESSION['user_id'] . "\n";
+    echo "Total Properties: " . count($properties) . "\n";
+    echo "Stats: " . print_r($stats, true);
+    echo "</pre>";
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -216,6 +274,8 @@ $stats = [
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Navigation CSS -->
+    <link href="../assets/css/agent_navigation.css" rel="stylesheet">
     
     <style>
         :root {
@@ -229,6 +289,7 @@ $stats = [
         body {
             background: #f5f7fa;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding-top: 80px;
         }
 
         .agent-header {
@@ -236,6 +297,10 @@ $stats = [
             padding: 1rem 0;
             color: white;
             box-shadow: 0 4px 15px rgba(44, 90, 160, 0.2);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1020;
         }
 
         .page-header {
@@ -403,44 +468,25 @@ $stats = [
             color: #6c757d;
             text-transform: uppercase;
         }
+
+        .breadcrumb-custom {
+            background: white;
+            padding: 1rem 0;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .breadcrumb-custom .breadcrumb {
+            margin-bottom: 0;
+            background: none;
+        }
     </style>
 </head>
-<body>
-    <!-- Header -->
-    <header class="agent-header">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <a href="../pages/home.php" class="text-white text-decoration-none fs-4 fw-bold">
-                        <i class="fas fa-building me-2"></i>Omnes Real Estate
-                    </a>
-                </div>
-                <div class="col-md-6 text-end">
-                    <a href="dashboard.php" class="btn btn-light me-2">
-                        <i class="fas fa-arrow-left me-1"></i>Dashboard
-                    </a>
-                    <?php if ($action === 'list'): ?>
-                        <a href="?action=add" class="btn btn-warning">
-                            <i class="fas fa-plus me-1"></i>Add Property
-                        </a>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-    </header>
+<body data-user-role="agent">
+    <!-- Include Navigation -->
+    <?php include '../includes/agent_navigation.php'; ?>
 
     <div class="container mt-4">
-        <!-- Breadcrumb -->
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="dashboard.php">Agent Portal</a></li>
-                <li class="breadcrumb-item active">Properties</li>
-                <?php if ($action !== 'list'): ?>
-                    <li class="breadcrumb-item active"><?= ucfirst($action) ?></li>
-                <?php endif; ?>
-            </ol>
-        </nav>
-
         <!-- Page Header -->
         <div class="page-header">
             <div class="row align-items-center">
@@ -464,8 +510,12 @@ $stats = [
                     </p>
                 </div>
                 <div class="col-md-4 text-end">
-                    <?php if ($action !== 'list'): ?>
-                        <a href="properties.php" class="btn btn-light">
+                    <?php if ($action === 'list'): ?>
+                        <a href="?action=add" class="btn btn-warning">
+                            <i class="fas fa-plus me-1"></i>Add Property
+                        </a>
+                    <?php else: ?>
+                        <a href="manage_properties.php" class="btn btn-light">
                             <i class="fas fa-list me-2"></i>Back to List
                         </a>
                     <?php endif; ?>
@@ -562,7 +612,7 @@ $stats = [
                                     
                                     <div class="property-stats">
                                         <div class="property-stat">
-                                            <div class="property-stat-value"><?= $prop['view_count'] ?? 0 ?></div>
+                                            <div class="property-stat-value">0</div>
                                             <div class="property-stat-label">Views</div>
                                         </div>
                                         <div class="property-stat">
@@ -598,6 +648,16 @@ $stats = [
                                                         </li>
                                                     <?php endif; ?>
                                                 <?php endforeach; ?>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <form method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this property?')">
+                                                        <input type="hidden" name="action" value="delete_property">
+                                                        <input type="hidden" name="property_id" value="<?= $prop['id'] ?>">
+                                                        <button type="submit" class="dropdown-item text-danger">
+                                                            <i class="fas fa-trash me-2"></i>Delete Property
+                                                        </button>
+                                                    </form>
+                                                </li>
                                             </ul>
                                         </div>
                                     </div>
@@ -837,7 +897,7 @@ $stats = [
                                 <i class="fas fa-save me-2"></i>
                                 <?= $action === 'add' ? 'Add Property' : 'Update Property' ?>
                             </button>
-                            <a href="properties.php" class="btn btn-outline-secondary">
+                            <a href="manage_properties.php" class="btn btn-outline-secondary">
                                 <i class="fas fa-times me-2"></i>Cancel
                             </a>
                         </div>
@@ -849,5 +909,6 @@ $stats = [
 
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="../assets/js/agent_navigation.js"></script>
 </body>
 </html>
