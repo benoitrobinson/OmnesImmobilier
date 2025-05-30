@@ -1,565 +1,427 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 session_start();
 require_once '../config/database.php';
 require_once '../includes/functions.php';
+
 // Check if user is logged in
 if (!isLoggedIn()) {
-$_SESSION['redirect_after_login'] = $_SERVER['REQUEST_URI'];
-redirect('../auth/login.php');
+    redirect('../auth/login.php');
 }
+
 $database = Database::getInstance();
-$db = $database->getConnection();
+$pdo = $database->getConnection();
+
 $property_id = $_GET['property_id'] ?? null;
 $agent_id = $_GET['agent_id'] ?? null;
 $error = '';
 $success = '';
-// Handle form submission for booking appointment
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+if (!$property_id) {
+    redirect('explore.php');
+}
+
+// Get property details with agent information
+try {
+    $query = "SELECT p.*, u.first_name, u.last_name, u.email as agent_email, u.phone as agent_phone
+              FROM properties p 
+              LEFT JOIN users u ON p.agent_id = u.id 
+              WHERE p.id = :property_id";
+    $stmt = $pdo->prepare($query);
+    $stmt->execute(['property_id' => $property_id]);
+    $property = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$property) {
+        $error = "Property not found.";
+    }
+} catch (Exception $e) {
+    error_log("Property fetch error: " . $e->getMessage());
+    $error = "Error loading property details.";
+}
+
+// Handle AJAX request for available times
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_times') {
+    // Clear any previous output to ensure clean JSON
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header('Content-Type: application/json');
+    
+    $date = $_GET['date'] ?? '';
+    $agent_id = $_GET['agent_id'] ?? '';
+    
+    if (empty($date) || empty($agent_id)) {
+        echo json_encode(['error' => 'Missing parameters']);
+        exit;
+    }
+    
+    try {
+        $day_of_week = date('l', strtotime($date));
+        $available_times = [];
+        
+        // Combined query: get both weekly schedule (NULL specific_date) AND specific date overrides
+        $query = "SELECT * FROM agent_availability 
+                  WHERE agent_id = ? 
+                  AND is_available = 1
+                  AND (
+                      (day_of_week = ? AND specific_date IS NULL) 
+                      OR specific_date = ?
+                  )
+                  ORDER BY specific_date DESC"; // Specific dates override weekly schedule
+        
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$agent_id, $day_of_week, $date]);
+        $slots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Process slots to generate available time slots
+        foreach ($slots as $slot) {
+            if (!$slot['start_time'] || !$slot['end_time']) {
+                continue;
+            }
+            
+            $start_time = $slot['start_time'];
+            $end_time = $slot['end_time'];
+            
+            // Convert to timestamps for easier manipulation
+            $current = strtotime($start_time);
+            $end = strtotime($end_time);
+            
+            // Generate 30-minute time slots
+            while ($current < $end) {
+                $time_slot = date('H:i:s', $current);
+                $time_display = date('g:i A', $current);
+                
+                // Check if this time slot is already booked
+                $conflict_query = "SELECT COUNT(*) as count FROM appointments 
+                                  WHERE agent_id = ? 
+                                  AND DATE(appointment_date) = ? 
+                                  AND TIME(appointment_date) = ?
+                                  AND status IN ('pending', 'confirmed', 'scheduled')";
+                $conflict_stmt = $pdo->prepare($conflict_query);
+                $conflict_stmt->execute([$agent_id, $date, $time_slot]);
+                $conflict = $conflict_stmt->fetch(PDO::FETCH_ASSOC);
+                
+                // Add to available times if not conflicting
+                if ($conflict['count'] == 0) {
+                    $available_times[] = [
+                        'value' => $time_slot,
+                        'display' => $time_display
+                    ];
+                }
+                
+                $current += 1800; // Add 30 minutes
+            }
+        }
+        
+        // Return the available time slots
+        echo json_encode($available_times);
+        exit;
+        
+    } catch (Exception $e) {
+        error_log("Error in availability check: " . $e->getMessage());
+        echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+        exit;
+    }
+}
+
+// Handle appointment booking
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     $appointment_date = $_POST['appointment_date'] ?? '';
     $appointment_time = $_POST['appointment_time'] ?? '';
-    $notes            = trim($_POST['notes'] ?? '');
-
-    // Read IDs from POST when submitting, else from GET
-    $property_id = $_POST['property_id']  ?? $_GET['property_id'] ?? null;
-    $agent_id    = $_POST['agent_id']     ?? $_GET['agent_id']    ?? null;
-
-    // Validation
-    if (empty($appointment_date) || empty($appointment_time)) {
-        $error = 'Please select both date and time for your appointment.';
-    } elseif (empty($property_id) || empty($agent_id)) {
-        $error = 'Missing property or agent information.';
+    $location = $_POST['location'] ?? '';
+    $message = trim($_POST['message'] ?? '');
+    
+    if (empty($appointment_date) || empty($appointment_time) || empty($location)) {
+        $error = "Please select date, time, and meeting location for your appointment.";
     } else {
         // Combine date and time
         $appointment_datetime = $appointment_date . ' ' . $appointment_time;
         
-        // Validate the datetime is in the future
-        if (strtotime($appointment_datetime) < time()) {
-            $error = 'Please select a future date and time.';
+        // Validate that appointment is in the future
+        if (strtotime($appointment_datetime) <= time()) {
+            $error = "Please select a future date and time.";
         } else {
             try {
-                // Check if the time slot is already taken
-                $check_stmt = $db->prepare("
-                    SELECT id FROM appointments 
-                    WHERE agent_id = ? AND appointment_date = ? AND status = 'scheduled'
-                ");
-                $check_stmt->execute([$agent_id, $appointment_datetime]);
+                // Insert appointment using existing table structure
+                $insert_query = "INSERT INTO appointments (client_id, agent_id, property_id, appointment_date, status, location) 
+                                VALUES (:client_id, :agent_id, :property_id, :appointment_date, 'scheduled', :location)";
+                $insert_stmt = $pdo->prepare($insert_query);
+                $insert_stmt->execute([
+                    'client_id' => $_SESSION['user_id'],
+                    'agent_id' => $property['agent_id'],
+                    'property_id' => $property_id,
+                    'appointment_date' => $appointment_datetime,
+                    'location' => $location
+                ]);
                 
-                if ($check_stmt->rowCount() > 0) {
-                    $error = 'This time slot is already booked. Please select another time.';
-                } else {
-                    // Get property address for location
-                    $location_stmt = $db->prepare("SELECT address_line1, city FROM properties WHERE id = ?");
-                    $location_stmt->execute([$property_id]);
-                    $property_info = $location_stmt->fetch(PDO::FETCH_ASSOC);
-                    $location = $property_info['address_line1'] . ', ' . $property_info['city'];
-                    
-                    // Insert the appointment
-                    $insert_stmt = $db->prepare("
-                        INSERT INTO appointments (client_id, agent_id, property_id, appointment_date, location, status, notes, created_at) 
-                        VALUES (?, ?, ?, ?, ?, 'scheduled', ?, NOW())
-                    ");
-                    
-                    if ($insert_stmt->execute([$_SESSION['user_id'], $agent_id, $property_id, $appointment_datetime, $location, $notes])) {
-                        $_SESSION['success_message'] = 'Your appointment has been successfully booked! You will receive a confirmation shortly.';
-                        redirect('../client/dashboard.php?section=appointments');
-                    } else {
-                        $error = 'Error booking appointment. Please try again.';
-                    }
-                }
+                $success = "Your appointment request has been submitted successfully! The agent will contact you to confirm.";
             } catch (Exception $e) {
                 error_log("Appointment booking error: " . $e->getMessage());
-                $error = 'Database error occurred. Please try again.';
+                $error = "Error booking appointment. Please try again. Details: " . $e->getMessage();
             }
         }
     }
 }
+?>
 
-// Get property details
-$property = null;
-if ($property_id) {
-    try {
-        $stmt = $db->prepare("
-            SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) as agent_name, u.id as agent_user_id,
-                   a.agency_name, a.agency_phone, a.agency_email
-            FROM properties p
-            JOIN agents a ON p.agent_id = a.user_id
-            JOIN users u ON a.user_id = u.id
-            WHERE p.id = ?
-        ");
-$stmt->execute([$property_id]);
-$property = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($property) {
-        $agent_id = $property['agent_user_id'];
-    } else {
-        $error = 'Property not found.';
-    }
-} catch (Exception $e) {
-    $error = 'Error loading property details.';
-}
-}
-// Get agent details
-$agent = null;
-if ($agent_id && !$error) {
-    try {
-        $agent_stmt = $db->prepare("
-            SELECT u.*, a.agency_name, a.agency_phone, a.agency_email
-            FROM users u
-            JOIN agents a ON u.id = a.user_id
-            WHERE u.id = ?
-        ");
-        $agent_stmt->execute([$agent_id]);
-        $agent = $agent_stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$agent) {
-            $error = 'Agent not found.';
-        }
-    } catch (Exception $e) {
-        $error = 'Error loading agent information.';
-    }
-}
-// Get agent availability
-$agent_availability = [];
-// Get agent availability
-$agent_availability = [];
-if ($agent_id && !$error) {
-    try {
-        $availability_stmt = $db->prepare("
-            SELECT day_of_week, start_time, end_time
-            FROM agent_availability
-            WHERE agent_id = ? AND is_available = 1
-            ORDER BY
-                CASE day_of_week
-                    WHEN 'Monday' THEN 1
-                    WHEN 'Tuesday' THEN 2
-                    WHEN 'Wednesday' THEN 3
-                    WHEN 'Thursday' THEN 4
-                    WHEN 'Friday' THEN 5
-                    WHEN 'Saturday' THEN 6
-                    WHEN 'Sunday' THEN 7
-                END
-        ");
-        $availability_stmt->execute([$agent_id]);
-        $agent_availability = $availability_stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        // Continue without availability data
-        error_log("Availability loading error: " . $e->getMessage());
-    }
-}
-// Get existing appointments for this agent to block taken time slots
-$taken_slots = [];
-if ($agent_id) {
-    try {
-        $taken_stmt = $db->prepare("
-            SELECT DATE(appointment_date) AS appointment_date,
-                   TIME(appointment_date) AS appointment_time
-            FROM appointments
-            WHERE agent_id = ? AND status = 'scheduled' AND appointment_date >= NOW()
-        ");
-        $taken_stmt->execute([$agent_id]);
-        while ($row = $taken_stmt->fetch(PDO::FETCH_ASSOC)) {
-            $taken_slots[$row['appointment_date']][] = $row['appointment_time'];
-        }
-    } catch (Exception $e) {
-        error_log("Taken slots load error: " . $e->getMessage());
-    }
-}
-
-// End PHP before outputting HTML
-?> 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Book Appointment - Omnes Real Estate</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <title>Book Appointment - Omnes Immobilier</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="../assets/css/navigation.css" rel="stylesheet">
-<style>
-    body {
-        background: #f8f9fa;
-        padding-top: 80px;
-    }
+    <link rel="stylesheet" href="../assets/css/navigation.css">
     
-    .booking-container {
-        max-width: 800px;
-        margin: 2rem auto;
-        padding: 2rem;
-    }
-    
-    .booking-header {
-        background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-        color: white;
-        padding: 2rem;
-        border-radius: 1rem;
-        margin-bottom: 2rem;
-        text-align: center;
-    }
-    
-    .property-card, .agent-card, .booking-form {
-        background: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e9ecef;
-    }
-    
-    .agent-avatar {
-        width: 80px;
-        height: 80px;
-        background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: 700;
-        font-size: 1.5rem;
-        margin-right: 1rem;
-        border: 3px solid white;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    }
-    
-    .property-price {
-        color: #d4af37;
-        font-weight: 700;
-        font-size: 1.5rem;
-    }
-    
-    .form-control, .form-select {
-        border: 2px solid #e9ecef;
-        border-radius: 0.75rem;
-        padding: 0.75rem 1rem;
-        transition: all 0.3s ease;
-    }
-    
-    .form-control:focus, .form-select:focus {
-        border-color: #d4af37;
-        box-shadow: 0 0 0 0.25rem rgba(212, 175, 55, 0.15);
-    }
-    
-    .btn-book {
-        background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
-        border: none;
-        color: white;
-        padding: 0.75rem 2rem;
-        border-radius: 0.75rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
-    }
-    
-    .btn-book:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(212, 175, 55, 0.4);
-        color: white;
-    }
-    
-    .time-slot {
-        border: 2px solid #e9ecef;
-        border-radius: 0.5rem;
-        padding: 0.5rem 1rem;
-        margin: 0.25rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: inline-block;
-        background: white;
-        font-size: 0.9rem;
-    }
-    
-    .time-slot:hover {
-        border-color: #d4af37;
-        background: rgba(212, 175, 55, 0.1);
-    }
-    
-    .time-slot.selected {
-        background: #d4af37;
-        color: white;
-        border-color: #d4af37;
-    }
-    
-    .time-slot.taken {
-        background: #f8f9fa;
-        color: #6c757d;
-        cursor: not-allowed;
-        opacity: 0.6;
-        text-decoration: line-through;
-    }
-    
-    .availability-info {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-    }
-    
-    .day-schedule {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid #e9ecef;
-    }
-    
-    .day-schedule:last-child {
-        border-bottom: none;
-    }
-</style>
+    <style>
+        body {
+            background: #f8f9fa;
+            padding-top: 80px;
+        }
+        
+        .appointment-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .property-summary {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            color: white;
+            padding: 2rem;
+        }
+        
+        .agent-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-control:focus {
+            border-color: #d4af37;
+            box-shadow: 0 0 0 0.25rem rgba(212, 175, 55, 0.25);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border: none;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+        }
+        
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #b8941f 0%, #e6c036 100%);
+        }
+    </style>
 </head>
 <body>
+    <?php include '../includes/header.php'; ?>
     <?php include '../includes/navigation.php'; ?>
-<div class="booking-container">
-    <!-- Header -->
-    <div class="booking-header">
-        <h1><i class="fas fa-calendar-plus me-2"></i>Book Your Property Viewing</h1>
-        <p class="mb-0">Schedule a personalized tour with our professional agent</p>
-    </div>
-
-    <?php if ($error): ?>
-        <div class="alert alert-danger" role="alert">
-            <i class="fas fa-exclamation-triangle me-2"></i><?= htmlspecialchars($error) ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($success): ?>
-        <div class="alert alert-success" role="alert">
-            <i class="fas fa-check-circle me-2"></i><?= htmlspecialchars($success) ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($property): ?>
-    <!-- Property Information -->
-    <div class="property-card">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h3><?= htmlspecialchars($property['title']) ?></h3>
-                <p class="text-muted mb-2">
-                    <i class="fas fa-map-marker-alt me-1"></i>
-                    <?= htmlspecialchars($property['address_line1'] . ', ' . $property['city']) ?>
-                </p>
-                <div class="property-price mb-2">€<?= number_format($property['price'], 0, ',', ' ') ?></div>
-                <div class="property-features">
-                    <span class="badge bg-light text-dark">
-                        <i class="fas fa-tag me-1"></i><?= ucfirst($property['property_type']) ?>
-                    </span>
-                </div>
-            </div>
-            <div class="col-md-4 text-end">
-                <img
-                    src="../assets/images/property<?= $property['id'] ?>-2.jpg"
-                    alt="<?= htmlspecialchars($property['title']) ?>"
-                    class="img-fluid rounded"
-                    style="max-height:150px; object-fit:cover;"
-                    onerror="this.src='../assets/images/placeholder.jpg'">
-            </div>
-        </div>
-    </div>
-    <?php endif; ?>
-
-    <?php if ($agent): ?>
-    <!-- Agent Information -->
-    <div class="agent-card">
-        <div class="row align-items-center">
-            <div class="col-auto">
-                <div class="agent-avatar">
-                    <?= strtoupper(substr($agent['first_name'], 0, 1) . substr($agent['last_name'], 0, 1)) ?>
-                </div>
-            </div>
-            <div class="col">
-                <h5 class="mb-1"><?= htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name']) ?></h5>
-                <p class="text-muted mb-1"><?= htmlspecialchars($agent['agency_name']) ?></p>
-                <div class="contact-info">
-                    <small class="text-muted">
-                        <i class="fas fa-phone me-1"></i><?= htmlspecialchars($agent['agency_phone']) ?>
-                        <span class="mx-2">•</span>
-                        <i class="fas fa-envelope me-1"></i><?= htmlspecialchars($agent['agency_email']) ?>
-                    </small>
-                </div>
-            </div>
-            <div class="col-auto">
-                <a href="tel:<?= htmlspecialchars($agent['agency_phone']) ?>" class="btn btn-outline-primary">
-                    <i class="fas fa-phone me-1"></i>Call Now
-                </a>
-            </div>
-        </div>
-        
-        <!-- Agent Availability Schedule -->
-        <?php if (!empty($agent_availability)): ?>
-        <div class="availability-info mt-3">
-            <h6><i class="fas fa-clock me-2"></i>Agent Availability</h6>
-            <?php foreach ($agent_availability as $schedule): ?>
-                <div class="day-schedule">
-                    <span class="fw-semibold"><?= $schedule['day_of_week'] ?></span>
-                    <span class="text-muted">
-                        <?= date('g:i A', strtotime($schedule['start_time'])) ?> - 
-                        <?= date('g:i A', strtotime($schedule['end_time'])) ?>
-                    </span>
-                </div>
-            <?php endforeach; ?>
-        </div>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
-
-    <?php if ($property && $agent): ?>
-    <!-- Booking Form -->
-    <div class="booking-form">
-        <h5 class="mb-4"><i class="fas fa-clock me-2"></i>Select Your Preferred Time</h5>
-        
-        <form method="POST" action="" id="bookingForm">
-            <!-- persist IDs -->
-            <input type="hidden" name="property_id" value="<?= htmlspecialchars($property_id) ?>">
-            <input type="hidden" name="agent_id"    value="<?= htmlspecialchars($agent_id) ?>">
-
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label for="appointment_date" class="form-label">Select Date</label>
-                        <input type="date" 
-                               class="form-control" 
-                               id="appointment_date" 
-                               name="appointment_date"
-                               min="<?= date('Y-m-d', strtotime('+1 day')) ?>"
-                               max="<?= date('Y-m-d', strtotime('+30 days')) ?>"
-                               required>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="mb-3">
-                        <label class="form-label">Select Time</label>
-                        <input type="hidden" id="appointment_time" name="appointment_time" required>
-                        <div class="time-slots" id="timeSlots">
-                            <p class="text-muted">Please select a date first to see available times</p>
-                        </div>
-                        <small class="text-muted">Click on a time slot to select it</small>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="mb-3">
-                <label for="notes" class="form-label">Notes (Optional)</label>
-                <textarea class="form-control" id="notes" name="notes" rows="3" 
-                          placeholder="Any special requests or information for the agent..."></textarea>
-            </div>
-            
-            <div class="d-flex gap-3">
-                <button type="submit" class="btn-book" id="bookBtn" disabled>
-                    <i class="fas fa-calendar-check me-2"></i>Book Appointment
-                </button>
-                <a href="explore.php" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left me-2"></i>Back to Properties
-                </a>
-            </div>
-        </form>
-    </div>
-    <?php endif; ?>
-
-    <?php if (!$property_id): ?>
-    <!-- No Property Selected -->
-    <div class="card">
-        <div class="card-body text-center py-5">
-            <i class="fas fa-exclamation-circle fa-3x text-warning mb-3"></i>
-            <h5 class="text-muted">No Property Selected</h5>
-            <p class="text-muted">Please select a property first to book an appointment.</p>
-            <a href="explore.php" class="btn btn-outline-primary">
-                <i class="fas fa-search me-2"></i>Browse Properties
-            </a>
-        </div>
-    </div>
-    <?php endif; ?>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-<script>
-    // Agent availability data for JavaScript
-    const agentAvailability = <?= json_encode($agent_availability) ?>;
-    const takenSlots = <?= json_encode($taken_slots) ?>;
-    const agentId = <?= json_encode($agent_id) ?>;
     
-    // Generate time slots based on agent availability
-    function generateTimeSlots(selectedDate) {
-        const dayOfWeek = new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long' });
-        const timeSlots = document.getElementById('timeSlots');
-        const timeInput = document.getElementById('appointment_time');
-        const bookBtn = document.getElementById('bookBtn');
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <?php if ($error): ?>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i><?= htmlspecialchars($error) ?>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if ($success): ?>
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i><?= htmlspecialchars($success) ?>
+                        <div class="mt-3">
+                            <a href="explore.php" class="btn btn-outline-primary me-2">Browse More Properties</a>
+                            <a href="../client/dashboard.php" class="btn btn-primary">View My Appointments</a>
+                        </div>
+                    </div>
+                <?php endif; ?>
+                
+                <?php if ($property && !$success): ?>
+                    <div class="appointment-card">
+                        <!-- Property Summary -->
+                        <div class="property-summary">
+                            <h2><i class="fas fa-calendar-alt me-2"></i>Book an Appointment</h2>
+                            <h4><?= htmlspecialchars($property['title']) ?></h4>
+                            <p class="mb-0">
+                                <i class="fas fa-map-marker-alt me-2"></i>
+                                <?= htmlspecialchars($property['address_line1'] . ', ' . $property['city']) ?>
+                            </p>
+                            <p class="h5 mt-2 mb-0">€<?= number_format($property['price'], 0, ',', ' ') ?></p>
+                        </div>
+                        
+                        <div class="p-4">
+                            <!-- Agent Information -->
+                            <?php if ($property['first_name']): ?>
+                                <div class="agent-info">
+                                    <h6><i class="fas fa-user-tie me-2"></i>Your Agent</h6>
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            <div style="width: 50px; height: 50px; background: #d4af37; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                                <?= strtoupper(substr($property['first_name'], 0, 1) . substr($property['last_name'], 0, 1)) ?>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="fw-semibold"><?= htmlspecialchars($property['first_name'] . ' ' . $property['last_name']) ?></div>
+                                            <?php if ($property['agent_email']): ?>
+                                                <small class="text-muted">
+                                                    <i class="fas fa-envelope me-1"></i><?= htmlspecialchars($property['agent_email']) ?>
+                                                </small>
+                                            <?php endif; ?>
+                                            <?php if ($property['agent_phone']): ?>
+                                                <br><small class="text-muted">
+                                                    <i class="fas fa-phone me-1"></i><?= htmlspecialchars($property['agent_phone']) ?>
+                                                </small>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <!-- Booking Form -->
+                            <form method="POST">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="appointment_date" class="form-label">Preferred Date *</label>
+                                        <input type="date" class="form-control" id="appointment_date" name="appointment_date" 
+                                               min="<?= date('Y-m-d', strtotime('+1 day')) ?>" required>
+                                        <small id="date-help" class="text-muted">Select a date to see available times</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="appointment_time" class="form-label">Preferred Time *</label>
+                                        <select class="form-select" id="appointment_time" name="appointment_time" required disabled>
+                                            <option value="">Select a date first</option>
+                                        </select>
+                                        <small id="time-help" class="text-muted">Please select a date to see available times.</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="location" class="form-label">Meeting Location *</label>
+                                    <select class="form-select" id="location" name="location" required>
+                                        <option value="">Select meeting location</option>
+                                        <option value="office">Office Visit</option>
+                                        <option value="visio">Online Meeting (Visio)</option>
+                                    </select>
+                                    <small class="text-muted">Choose whether to meet at the office or have an online meeting.</small>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="message" class="form-label">Message (Optional)</label>
+                                    <textarea class="form-control" id="message" name="message" rows="4" 
+                                              placeholder="Any specific requirements or questions about the property..."></textarea>
+                                </div>
+                                
+                                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                    <a href="explore.php" class="btn btn-outline-secondary me-md-2">
+                                        <i class="fas fa-arrow-left me-2"></i>Back to Properties
+                                    </a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-calendar-check me-2"></i>Book Appointment
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // Set minimum date to tomorrow
+    document.getElementById('appointment_date').min = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    
+    // Update available times when date changes
+    document.getElementById('appointment_date').addEventListener('change', function() {
+        const selectedDate = this.value;
+        const timeSelect = document.getElementById('appointment_time');
+        const timeHelp = document.getElementById('time-help');
+        const agentId = <?= $property['agent_id'] ?? 'null' ?>;
         
-        // Find availability for this day
-        const dayAvailability = agentAvailability.find(avail => avail.day_of_week === dayOfWeek);
-        
-        if (!dayAvailability) {
-            timeSlots.innerHTML = '<p class="text-muted">Agent is not available on ' + dayOfWeek + 's</p>';
-            timeInput.value = '';
-            bookBtn.disabled = true;
+        if (!selectedDate || !agentId) {
+            timeSelect.disabled = true;
+            timeSelect.innerHTML = '<option value="">Select a date first</option>';
+            timeHelp.textContent = 'Please select a date to see available times.';
+            timeHelp.className = 'text-muted';
             return;
         }
         
-        // Generate hourly slots between start and end time
-        const startTime = dayAvailability.start_time;
-        const endTime = dayAvailability.end_time;
+        // Show loading state
+        timeSelect.disabled = true;
+        timeSelect.innerHTML = '<option value="">Loading available times...</option>';
+        timeHelp.textContent = 'Loading available times...';
+        timeHelp.className = 'text-info';
         
-        let slotsHtml = '';
-        let currentTime = new Date('2000-01-01 ' + startTime);
-        const endTimeObj = new Date('2000-01-01 ' + endTime);
+        // Use the dedicated test file instead
+        const timestamp = new Date().getTime();
+        const url = `test_availability.php?date=${selectedDate}&agent_id=${agentId}&_=${timestamp}`;
         
-        while (currentTime < endTimeObj) {
-            const timeStr = currentTime.toTimeString().substring(0, 8);
-            const displayTime = currentTime.toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
-                minute: '2-digit',
-                hour12: true 
+        fetch(url)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json(); // Use .json() directly since we now have clean JSON
+            })
+            .then(times => {
+                // Clear any previous options
+                timeSelect.innerHTML = '';
+                
+                if (times.error) {
+                    // Handle error in response
+                    timeSelect.innerHTML = '<option value="">Error loading times</option>';
+                    timeSelect.disabled = true;
+                    timeHelp.textContent = 'Error: ' + times.error;
+                    timeHelp.className = 'text-danger';
+                } else if (times.length === 0) {
+                    // No available times
+                    timeSelect.innerHTML = '<option value="" disabled>No available times</option>';
+                    timeSelect.disabled = true;
+                    timeHelp.textContent = 'Agent is not available on this date. Please select a different date.';
+                    timeHelp.className = 'text-warning';
+                } else {
+                    // Add default "select time" option
+                    timeSelect.innerHTML = '<option value="">Select time</option>';
+                    
+                    // Add available times
+                    times.forEach(time => {
+                        const option = document.createElement('option');
+                        option.value = time.value;
+                        option.textContent = time.display;
+                        timeSelect.appendChild(option);
+                    });
+                    
+                    // Enable the select
+                    timeSelect.disabled = false;
+                    timeHelp.textContent = `${times.length} time slots available`;
+                    timeHelp.className = 'text-success';
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                timeSelect.innerHTML = '<option value="">Error loading times</option>';
+                timeSelect.disabled = true;
+                timeHelp.textContent = 'Error loading available times. Please try again.';
+                timeHelp.className = 'text-danger';
             });
-            
-            // Check if this slot is taken
-            const isTaken = takenSlots[selectedDate] && takenSlots[selectedDate].includes(timeStr);
-            const slotClass = isTaken ? 'time-slot taken' : 'time-slot';
-            const clickable = isTaken ? '' : `onclick="selectTimeSlot('${timeStr}', this)"`;
-            
-            slotsHtml += `<div class="${slotClass}" data-time="${timeStr}" ${clickable}>${displayTime}</div>`;
-            
-            // Add 1 hour
-            currentTime.setHours(currentTime.getHours() + 1);
-        }
-        
-        timeSlots.innerHTML = slotsHtml;
-        timeInput.value = '';
-        bookBtn.disabled = true;
-    }
-    
-    // Select time slot
-    function selectTimeSlot(time, element) {
-        // Remove selection from other slots
-        document.querySelectorAll('.time-slot').forEach(slot => {
-            slot.classList.remove('selected');
-        });
-        
-        // Select this slot
-        element.classList.add('selected');
-        document.getElementById('appointment_time').value = time;
-        document.getElementById('bookBtn').disabled = false;
-    }
-    
-    // Date change handler
-    document.getElementById('appointment_date').addEventListener('change', function() {
-        if (this.value) {
-            generateTimeSlots(this.value);
-        }
     });
     
     // Form validation
-    document.getElementById('bookingForm').addEventListener('submit', function(e) {
+    document.querySelector('form').addEventListener('submit', function(e) {
         const date = document.getElementById('appointment_date').value;
         const time = document.getElementById('appointment_time').value;
+        const location = document.getElementById('location').value;
         
-        if (!date || !time) {
+        if (!date || !time || !location) {
             e.preventDefault();
-            alert('Please select both date and time for your appointment.');
+            alert('Please select date, time, and meeting location for your appointment.');
         }
     });
 </script>
 </body>
 </html>
-

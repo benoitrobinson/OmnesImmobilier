@@ -12,6 +12,39 @@ if (!isLoggedIn()) {
     redirect('../auth/login.php');
 }
 
+// Handle appointment cancellation BEFORE any output
+if (isset($_POST['cancel_appointment'])) {
+    $appointment_id = $_POST['appointment_id'] ?? null;
+    if ($appointment_id) {
+        try {
+            $database = Database::getInstance();
+            $pdo = $database->getConnection();
+            
+            // Verify the appointment belongs to the current user and update status
+            $cancel_query = "UPDATE appointments 
+                           SET status = 'cancelled' 
+                           WHERE id = :id AND client_id = :client_id";
+            $cancel_stmt = $pdo->prepare($cancel_query);
+            $cancel_stmt->execute([
+                'id' => $appointment_id,
+                'client_id' => $_SESSION['user_id']
+            ]);
+            
+            if ($cancel_stmt->rowCount() > 0) {
+                $_SESSION['success_message'] = "Appointment cancelled successfully.";
+            } else {
+                $_SESSION['error_message'] = "Unable to cancel appointment.";
+            }
+        } catch (Exception $e) {
+            error_log("Appointment cancellation error: " . $e->getMessage());
+            $_SESSION['error_message'] = "Error cancelling appointment.";
+        }
+        // Redirect to prevent form resubmission
+        header("Location: ?section=appointments");
+        exit;
+    }
+}
+
 $error = '';
 $user_data = [];
 
@@ -1149,6 +1182,14 @@ try {
                         </div>
                         <?php unset($_SESSION['success_message']); ?>
                     <?php endif; ?>
+                    
+                    <?php if (!empty($_SESSION['error_message'])): ?>
+                        <div class="alert alert-danger">
+                            <?= $_SESSION['error_message'] ?>
+                        </div>
+                        <?php unset($_SESSION['error_message']); ?>
+                    <?php endif; ?>
+
                     <ul class="nav nav-tabs mb-4">
                       <li class="nav-item">
                         <a class="nav-link <?= ($_GET['section'] ?? '')==='appointments' ? 'active' : '' ?>"
@@ -1157,10 +1198,11 @@ try {
                     </ul>
 
                     <?php if(($_GET['section'] ?? '')==='appointments'): 
-                      // fetch appointments
+                      // fetch appointments with more details
                       $stmt = $pdo->prepare("
-                        SELECT a.appointment_date, a.status, p.title AS property,
-                               CONCAT(u.first_name,' ',u.last_name) AS agent
+                        SELECT a.id, a.appointment_date, a.status, a.location, p.title AS property,
+                               p.address_line1, p.city,
+                               CONCAT(u.first_name,' ',u.last_name) AS agent, u.email as agent_email
                         FROM appointments a
                         JOIN properties p ON a.property_id=p.id
                         JOIN users u ON a.agent_id=u.id
@@ -1171,25 +1213,96 @@ try {
                       $apps = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     ?>
                       <?php if (empty($apps)): ?>
-                        <p>No appointments found.</p>
+                        <div class="content-card">
+                            <div class="content-card-body text-center py-5">
+                                <i class="fas fa-calendar-times fa-4x text-muted mb-4"></i>
+                                <h4 class="text-muted mb-3">No Appointments Found</h4>
+                                <p class="text-muted mb-4">You haven't booked any appointments yet.</p>
+                                <a href="../pages/explore.php" class="btn-luxury-primary">
+                                    <i class="fas fa-search"></i>
+                                    Browse Properties
+                                </a>
+                            </div>
+                        </div>
                       <?php else: ?>
-                        <table class="table">
-                          <thead>
-                            <tr>
-                              <th>Date & Time</th><th>Property</th><th>Agent</th><th>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            <?php foreach($apps as $a): ?>
-                              <tr>
-                                <td><?= date('d M Y, H:i', strtotime($a['appointment_date'])) ?></td>
-                                <td><?= htmlspecialchars($a['property']) ?></td>
-                                <td><?= htmlspecialchars($a['agent']) ?></td>
-                                <td><?= ucfirst(htmlspecialchars($a['status'])) ?></td>
-                              </tr>
-                            <?php endforeach; ?>
-                          </tbody>
-                        </table>
+                        <div class="content-card">
+                            <div class="content-card-header">
+                                <i class="fas fa-calendar-alt me-2"></i>My Appointments (<?= count($apps) ?>)
+                            </div>
+                            <div class="content-card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Date & Time</th>
+                                                <th>Property</th>
+                                                <th>Agent</th>
+                                                <th>Location</th>
+                                                <th>Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach($apps as $a): ?>
+                                                <tr>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= date('d M Y', strtotime($a['appointment_date'])) ?></div>
+                                                        <small class="text-muted"><?= date('H:i', strtotime($a['appointment_date'])) ?></small>
+                                                    </td>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= htmlspecialchars($a['property']) ?></div>
+                                                        <small class="text-muted"><?= htmlspecialchars($a['address_line1'] . ', ' . $a['city']) ?></small>
+                                                    </td>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= htmlspecialchars($a['agent']) ?></div>
+                                                        <small class="text-muted"><?= htmlspecialchars($a['agent_email']) ?></small>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge bg-<?= $a['location'] === 'office' ? 'primary' : 'success' ?>">
+                                                            <?= $a['location'] === 'office' ? 'Office Visit' : 'Online Meeting' ?>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <?php 
+                                                        $status_colors = [
+                                                            'scheduled' => 'success',
+                                                            'cancelled' => 'danger',
+                                                            'completed' => 'info',
+                                                            'pending' => 'warning'
+                                                        ];
+                                                        $status_color = $status_colors[$a['status']] ?? 'secondary';
+                                                        ?>
+                                                        <span class="badge bg-<?= $status_color ?>">
+                                                            <?= ucfirst(htmlspecialchars($a['status'])) ?>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <?php if ($a['status'] === 'scheduled' && strtotime($a['appointment_date']) > time()): ?>
+                                                            <form method="POST" style="display: inline;" 
+                                                                  onsubmit="return confirm('Are you sure you want to cancel this appointment?')">
+                                                                <input type="hidden" name="appointment_id" value="<?= $a['id'] ?>">
+                                                                <button type="submit" name="cancel_appointment" 
+                                                                        class="btn btn-sm btn-outline-danger">
+                                                                    <i class="fas fa-times me-1"></i>Cancel
+                                                                </button>
+                                                            </form>
+                                                        <?php elseif ($a['status'] === 'cancelled'): ?>
+                                                            <span class="text-muted">
+                                                                <i class="fas fa-ban me-1"></i>Cancelled
+                                                            </span>
+                                                        <?php elseif (strtotime($a['appointment_date']) <= time()): ?>
+                                                            <span class="text-muted">
+                                                                <i class="fas fa-clock me-1"></i>Past
+                                                            </span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                       <?php endif; ?>
                     <?php endif; ?>
 

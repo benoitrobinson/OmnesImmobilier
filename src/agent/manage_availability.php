@@ -8,12 +8,34 @@ if (!isLoggedIn() || !isAgent()) {
     redirect('../auth/login.php');
 }
 
-// Use the global $pdo connection
-$db = $pdo;
+// Get database connection using the Database class
+$database = Database::getInstance();
+$db = $database->getConnection();
 
 $error = '';
 $success = '';
 $action = $_GET['action'] ?? 'calendar';
+
+// Create agent_availability table if it doesn't exist
+try {
+    $create_table_query = "CREATE TABLE IF NOT EXISTS agent_availability (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        agent_id INT NOT NULL,
+        day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+        specific_date DATE NULL,
+        start_time TIME NULL,
+        end_time TIME NULL,
+        is_available BOOLEAN NOT NULL DEFAULT TRUE,
+        availability_type ENUM('weekly', 'exception', 'lunch_break', 'quick_available', 'quick_blocked') NOT NULL DEFAULT 'weekly',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (agent_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_agent_date (agent_id, specific_date),
+        INDEX idx_agent_day (agent_id, day_of_week, availability_type)
+    )";
+    $db->exec($create_table_query);
+} catch (Exception $e) {
+    error_log("Table creation error: " . $e->getMessage());
+}
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -24,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $db->beginTransaction();
             
             // Clear existing weekly schedule (general availability)
-            $clear_query = "DELETE FROM agent_availability WHERE agent_id = :agent_id AND availability_type = 'weekly'";
+            $clear_query = "DELETE FROM agent_availability WHERE agent_id = :agent_id AND availability_type IN ('weekly', 'lunch_break')";
             $clear_stmt = $db->prepare($clear_query);
             $clear_stmt->execute(['agent_id' => $_SESSION['user_id']]);
             
@@ -41,6 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $lunch_start = $_POST[$day . '_lunch_start'] ?? '12:00';
                     $lunch_end = $_POST[$day . '_lunch_end'] ?? '13:00';
                     
+                    // Validate times
+                    if ($start_time >= $end_time) {
+                        throw new Exception("End time must be after start time for " . ucfirst($day));
+                    }
+                    
                     // Insert main availability
                     $insert_query = "INSERT INTO agent_availability 
                                    (agent_id, day_of_week, start_time, end_time, is_available, availability_type, created_at) 
@@ -55,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     ]);
                     
                     // Insert lunch break if specified
-                    if ($lunch_break) {
+                    if ($lunch_break && $lunch_start < $lunch_end && $lunch_start >= $start_time && $lunch_end <= $end_time) {
                         $lunch_query = "INSERT INTO agent_availability 
                                       (agent_id, day_of_week, start_time, end_time, is_available, availability_type, created_at) 
                                       VALUES (:agent_id, :day_of_week, :start_time, :end_time, 0, 'lunch_break', NOW())";
@@ -77,42 +104,77 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } catch (Exception $e) {
             $db->rollBack();
             error_log("Weekly schedule update error: " . $e->getMessage());
-            $error = 'Error updating weekly schedule.';
+            $error = 'Error updating weekly schedule: ' . $e->getMessage();
         }
     }
     
     elseif ($form_action === 'add_exception') {
         $exception_date = $_POST['exception_date'] ?? '';
         $exception_type = $_POST['exception_type'] ?? 'blocked';
-        $start_time = $_POST['start_time'] ?? '';
-        $end_time = $_POST['end_time'] ?? '';
-        $reason = trim($_POST['reason'] ?? '');
+        $start_time = $_POST['start_time'] ?? null;
+        $end_time = $_POST['end_time'] ?? null;
         
         if (!empty($exception_date)) {
-            try {
-                $day_of_week = date('l', strtotime($exception_date));
-                
-                $query = "INSERT INTO agent_availability 
-                         (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type, reason, created_at) 
-                         VALUES (:agent_id, :day_of_week, :specific_date, :start_time, :end_time, :is_available, :availability_type, :reason, NOW())";
-                
-                $stmt = $db->prepare($query);
-                $stmt->execute([
-                    'agent_id' => $_SESSION['user_id'],
-                    'day_of_week' => $day_of_week,
-                    'specific_date' => $exception_date,
-                    'start_time' => $start_time ?: null,
-                    'end_time' => $end_time ?: null,
-                    'is_available' => ($exception_type === 'available' ? 1 : 0),
-                    'availability_type' => 'exception',
-                    'reason' => $reason
-                ]);
-                
-                $success = 'Schedule exception added successfully!';
-                
-            } catch (Exception $e) {
-                error_log("Exception add error: " . $e->getMessage());
-                $error = 'Error adding schedule exception.';
+            // Validate date is not in the past
+            if ($exception_date < date('Y-m-d')) {
+                $error = 'Cannot add exceptions for past dates.';
+            } else {
+                try {
+                    $day_of_week = date('l', strtotime($exception_date));
+                    
+                    // Validate times if provided
+                    if ($start_time && $end_time && $start_time >= $end_time) {
+                        throw new Exception("End time must be after start time.");
+                    }
+                    
+                    // Check if exception already exists for this date
+                    $check_query = "SELECT id FROM agent_availability 
+                                   WHERE agent_id = :agent_id AND specific_date = :specific_date AND availability_type = 'exception'";
+                    $check_stmt = $db->prepare($check_query);
+                    $check_stmt->execute([
+                        'agent_id' => $_SESSION['user_id'],
+                        'specific_date' => $exception_date
+                    ]);
+                    
+                    if ($check_stmt->rowCount() > 0) {
+                        // Update existing exception
+                        $update_query = "UPDATE agent_availability SET 
+                                        start_time = :start_time, 
+                                        end_time = :end_time, 
+                                        is_available = :is_available 
+                                        WHERE agent_id = :agent_id AND specific_date = :specific_date AND availability_type = 'exception'";
+                        $update_stmt = $db->prepare($update_query);
+                        $update_stmt->execute([
+                            'agent_id' => $_SESSION['user_id'],
+                            'specific_date' => $exception_date,
+                            'start_time' => $start_time,
+                            'end_time' => $end_time,
+                            'is_available' => ($exception_type === 'available' ? 1 : 0)
+                        ]);
+                    } else {
+                        // Insert new exception
+                        $query = "INSERT INTO agent_availability 
+                                 (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type, created_at) 
+                                 VALUES (:agent_id, :day_of_week, :specific_date, :start_time, :end_time, :is_available, :availability_type, NOW())";
+                        
+                        $stmt = $db->prepare($query);
+                        $stmt->execute([
+                            'agent_id' => $_SESSION['user_id'],
+                            'day_of_week' => $day_of_week,
+                            'specific_date' => $exception_date,
+                            'start_time' => $start_time,
+                            'end_time' => $end_time,
+                            'is_available' => ($exception_type === 'available' ? 1 : 0),
+                            'availability_type' => 'exception'
+                        ]);
+                    }
+                    
+                    $success = 'Schedule exception added successfully!';
+                    
+                } catch (Exception $e) {
+                    error_log("Exception add error: " . $e->getMessage());
+                    $error = 'Error adding schedule exception: ' . $e->getMessage();
+                }
             }
         } else {
             $error = 'Please select a date for the exception.';
@@ -124,19 +186,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $duration = (int)($_POST['duration'] ?? 120); // minutes
         
         try {
-            $current_time = date('Y-m-d H:i:s');
-            $end_time = date('Y-m-d H:i:s', strtotime("+{$duration} minutes"));
+            $current_date = date('Y-m-d');
+            $current_time = date('H:i:s');
+            $end_time = date('H:i:s', strtotime("+{$duration} minutes"));
             $day_of_week = date('l');
+            
+            // Clean up any existing quick toggles for today that have expired
+            $cleanup_query = "DELETE FROM agent_availability 
+                             WHERE agent_id = :agent_id 
+                             AND specific_date = :current_date 
+                             AND availability_type IN ('quick_available', 'quick_blocked')
+                             AND end_time < :current_time";
+            $cleanup_stmt = $db->prepare($cleanup_query);
+            $cleanup_stmt->execute([
+                'agent_id' => $_SESSION['user_id'],
+                'current_date' => $current_date,
+                'current_time' => $current_time
+            ]);
             
             if ($toggle_type === 'available') {
                 $query = "INSERT INTO agent_availability 
-                         (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type, reason, created_at) 
-                         VALUES (:agent_id, :day_of_week, :specific_date, :start_time, :end_time, 1, 'quick_available', 'Quick availability', NOW())";
+                         (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type, created_at) 
+                         VALUES (:agent_id, :day_of_week, :specific_date, :start_time, :end_time, 1, 'quick_available', NOW())";
                 $message = "Quick availability set for {$duration} minutes";
             } else {
                 $query = "INSERT INTO agent_availability 
-                         (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type, reason, created_at) 
-                         VALUES (:agent_id, :day_of_week, :specific_date, :start_time, :end_time, 0, 'quick_blocked', 'Quick block', NOW())";
+                         (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type, created_at) 
+                         VALUES (:agent_id, :day_of_week, :specific_date, :start_time, :end_time, 0, 'quick_blocked', NOW())";
                 $message = "Blocked time set for {$duration} minutes";
             }
             
@@ -144,16 +220,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $stmt->execute([
                 'agent_id' => $_SESSION['user_id'],
                 'day_of_week' => $day_of_week,
-                'specific_date' => date('Y-m-d'),
-                'start_time' => date('H:i:s'),
-                'end_time' => date('H:i:s', strtotime("+{$duration} minutes"))
+                'specific_date' => $current_date,
+                'start_time' => $current_time,
+                'end_time' => $end_time
             ]);
             
             $success = $message;
             
         } catch (Exception $e) {
             error_log("Quick toggle error: " . $e->getMessage());
-            $error = 'Error updating availability status.';
+            $error = 'Error updating availability status: ' . $e->getMessage();
         }
     }
     
@@ -170,7 +246,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         } catch (Exception $e) {
             error_log("Exception delete error: " . $e->getMessage());
-            $error = 'Error deleting exception.';
+            $error = 'Error deleting exception: ' . $e->getMessage();
         }
     }
 }
@@ -186,9 +262,10 @@ try {
         end_time TIME NULL,
         is_available BOOLEAN NOT NULL DEFAULT TRUE,
         availability_type ENUM('weekly', 'exception', 'lunch_break', 'quick_available', 'quick_blocked') NOT NULL DEFAULT 'weekly',
-        reason VARCHAR(255) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (agent_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (agent_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_agent_date (agent_id, specific_date),
+        INDEX idx_agent_day (agent_id, day_of_week, availability_type)
     )";
     $db->exec($create_table_query);
 } catch (Exception $e) {
@@ -254,33 +331,60 @@ try {
     error_log("Upcoming appointments fetch error: " . $e->getMessage());
 }
 
-// Check current availability status
+// Check current availability status with quick toggles
 $current_status = 'unknown';
 $current_day = strtolower(date('l'));
 $current_time = date('H:i:s');
+$current_date = date('Y-m-d');
 
-if (isset($weekly_schedule[$current_day]) && $weekly_schedule[$current_day]['available']) {
-    $start_time = $weekly_schedule[$current_day]['start_time'];
-    $end_time = $weekly_schedule[$current_day]['end_time'];
+// First check for quick toggles that override everything
+try {
+    $quick_query = "SELECT * FROM agent_availability 
+                   WHERE agent_id = :agent_id 
+                   AND specific_date = :current_date 
+                   AND availability_type IN ('quick_available', 'quick_blocked')
+                   AND start_time <= :current_time 
+                   AND end_time >= :current_time
+                   ORDER BY created_at DESC 
+                   LIMIT 1";
+    $quick_stmt = $db->prepare($quick_query);
+    $quick_stmt->execute([
+        'agent_id' => $_SESSION['user_id'],
+        'current_date' => $current_date,
+        'current_time' => $current_time
+    ]);
+    $quick_toggle = $quick_stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($current_time >= $start_time && $current_time <= $end_time) {
-        // Check if in lunch break
-        if ($weekly_schedule[$current_day]['lunch_break']) {
-            $lunch_start = $weekly_schedule[$current_day]['lunch_start'];
-            $lunch_end = $weekly_schedule[$current_day]['lunch_end'];
-            if ($current_time >= $lunch_start && $current_time <= $lunch_end) {
-                $current_status = 'lunch';
+    if ($quick_toggle) {
+        $current_status = $quick_toggle['is_available'] ? 'available' : 'unavailable';
+    } else {
+        // Check regular schedule
+        if (isset($weekly_schedule[$current_day]) && $weekly_schedule[$current_day]['available']) {
+            $start_time = $weekly_schedule[$current_day]['start_time'];
+            $end_time = $weekly_schedule[$current_day]['end_time'];
+            
+            if ($current_time >= $start_time && $current_time <= $end_time) {
+                // Check if in lunch break
+                if ($weekly_schedule[$current_day]['lunch_break']) {
+                    $lunch_start = $weekly_schedule[$current_day]['lunch_start'];
+                    $lunch_end = $weekly_schedule[$current_day]['lunch_end'];
+                    if ($current_time >= $lunch_start && $current_time <= $lunch_end) {
+                        $current_status = 'lunch';
+                    } else {
+                        $current_status = 'available';
+                    }
+                } else {
+                    $current_status = 'available';
+                }
             } else {
-                $current_status = 'available';
+                $current_status = 'unavailable';
             }
         } else {
-            $current_status = 'available';
+            $current_status = 'unavailable';
         }
-    } else {
-        $current_status = 'unavailable';
     }
-} else {
-    $current_status = 'unavailable';
+} catch (Exception $e) {
+    error_log("Current status check error: " . $e->getMessage());
 }
 
 // Get current week dates for calendar
@@ -907,9 +1011,6 @@ for ($i = 0; $i < 7; $i++) {
                                                 <?php else: ?>
                                                     <br><small>All Day</small>
                                                 <?php endif; ?>
-                                                <?php if ($exception['reason']): ?>
-                                                    <br><em><?= htmlspecialchars($exception['reason']) ?></em>
-                                                <?php endif; ?>
                                             </div>
                                             <form method="POST" class="d-inline">
                                                 <input type="hidden" name="action" value="delete_exception">
@@ -996,12 +1097,6 @@ for ($i = 0; $i < 7; $i++) {
                                     <input type="time" class="form-control form-control-custom" name="end_time">
                                 </div>
                             </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Reason (Optional)</label>
-                            <input type="text" class="form-control form-control-custom" name="reason" 
-                                   placeholder="e.g., Vacation, Training, Personal appointment">
                         </div>
                         
                         <div class="alert alert-info">
