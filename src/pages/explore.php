@@ -61,6 +61,31 @@ if (isset($_SESSION['user_id'])) {
           backdrop-filter: none !important;
           z-index: 1000;
         }
+        
+        /* Make navbar text white on transparent background */
+        .navbar .nav-link,
+        .navbar .navbar-brand {
+          color: white !important;
+        }
+        
+        .navbar .nav-link:hover {
+          color: #d4af37 !important;
+        }
+        
+        .navbar .nav-link.active {
+          color: #d4af37 !important;
+        }
+        
+        /* User avatar on transparent navbar */
+        .navbar .user-avatar-small {
+          border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Dropdown arrow */
+        .navbar .fas.fa-chevron-down {
+          color: white !important;
+        }
+        
         /* remove border‐radius on hero image */
         .explore-hero-bg {
           border-radius: 0 !important;

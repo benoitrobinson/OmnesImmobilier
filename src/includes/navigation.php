@@ -33,7 +33,8 @@ if ($userRole === 'agent') {
         </button>
         
         <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
+            <!-- Left-aligned navigation links -->
+            <ul class="navbar-nav me-auto">
                 <li class="nav-item">
                     <a class="nav-link<?php if(basename($_SERVER['PHP_SELF']) == 'home.php') echo ' active'; ?>" href="../pages/home.php">
                         <i class="fas fa-home me-1"></i>Home
@@ -52,6 +53,32 @@ if ($userRole === 'agent') {
                     </a>
                 </li>
                 
+                <?php if(!empty($_SESSION['role']) && $_SESSION['role'] === 'agent'): ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="/agent/availability.php">Availability</a>
+                </li>
+                <?php
+                // count pending appointments
+                $count = 0;
+                if (!empty($_SESSION['user_id'])) {
+                    $stmt = $pdo->prepare(
+                        "SELECT COUNT(*) FROM appointments 
+                         WHERE agent_id = ? AND appointment_date >= NOW()"
+                    );
+                    $stmt->execute([ $_SESSION['user_id'] ]);
+                    $count = (int)$stmt->fetchColumn();
+                }
+                ?>
+                <li class="nav-item">
+                  <a class="nav-link" href="/agent/dashboard.php">
+                    Appointments <span class="badge bg-light text-dark"><?=$count?></span>
+                  </a>
+                </li>
+                <?php endif; ?>
+            </ul>
+            
+            <!-- Right-aligned account dropdown -->
+            <ul class="navbar-nav">
                 <?php if ($isLoggedIn): ?>
                     <!-- Account dropdown for logged in users -->
                     <li class="nav-item dropdown account-dropdown">
@@ -193,29 +220,6 @@ if ($userRole === 'agent') {
                             </li>
                         </ul>
                     </li>
-                <?php endif; ?>
-                
-                <?php if(!empty($_SESSION['role']) && $_SESSION['role'] === 'agent'): ?>
-                <li class="nav-item">
-                  <a class="nav-link" href="/agent/availability.php">Availability</a>
-                </li>
-                <?php
-                // count pending appointments
-                $count = 0;
-                if (!empty($_SESSION['user_id'])) {
-                    $stmt = $pdo->prepare(
-                        "SELECT COUNT(*) FROM appointments 
-                         WHERE agent_id = ? AND appointment_date >= NOW()"
-                    );
-                    $stmt->execute([ $_SESSION['user_id'] ]);
-                    $count = (int)$stmt->fetchColumn();
-                }
-                ?>
-                <li class="nav-item">
-                  <a class="nav-link" href="/agent/dashboard.php">
-                    Appointments <span class="badge bg-light text-dark"><?=$count?></span>
-                  </a>
-                </li>
                 <?php endif; ?>
             </ul>
         </div>

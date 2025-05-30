@@ -111,6 +111,11 @@
     align-items: center;
 }
 
+/* Fix for the right-aligned nav items */
+.navbar-nav.me-auto {
+    margin-right: auto !important;
+}
+
 .nav-item {
     position: relative;
     display: flex;
@@ -151,7 +156,7 @@
 
 /* Container and Layout */
 .container-fluid {
-    justify-content: flex-start !important;
+    justify-content: space-between !important;
     display: flex !important;
     align-items: center;
     padding-left: 0 !important;
@@ -159,13 +164,10 @@
 }
 
 .collapse.navbar-collapse {
-    justify-content: flex-start !important;
-    display: flex;
+    justify-content: space-between !important;
+    display: flex !important;
     align-items: center;
-}
-
-.ms-auto {
-    margin-left: 0 !important;
+    width: 100%;
 }
 
 /* Enhanced Dropdown Styling */
@@ -439,6 +441,17 @@
     .account-dropdown-menu .dropdown-item {
         margin: 0.125rem 0.25rem;
         padding: 0.75rem 1rem;
+    }
+    
+    /* Fix for navbar collapse in mobile view */
+    .navbar-collapse {
+        flex-direction: column;
+    }
+    
+    .navbar-nav.me-auto, 
+    .navbar-nav:not(.me-auto) {
+        width: 100%;
+        margin: 0;
     }
 }
 

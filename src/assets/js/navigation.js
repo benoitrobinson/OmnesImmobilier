@@ -322,6 +322,7 @@ function closeAllDropdowns() {
 }
 
 // Scroll Effects with Performance Optimization
+// Scroll Effects with Performance Optimization
 function initializeScrollEffects() {
     const navbar = document.querySelector('.navbar');
     if (!navbar) return;
@@ -332,21 +333,37 @@ function initializeScrollEffects() {
     function updateNavbar() {
         const scrollY = window.scrollY;
         
-        // Add scrolled class for backdrop effect
+        // Add scrolled class for backdrop effect when scrolled down
         if (scrollY > 50) {
             navbar.classList.add('scrolled');
+            navbar.classList.add('white-bg');
+            navbar.classList.remove('navbar-transparent');
         } else {
             navbar.classList.remove('scrolled');
+            // Only remove white-bg if page is at the very top
+            if (scrollY <= 10) {
+                navbar.classList.remove('white-bg');
+                // Check if navbar should be transparent on this page
+                if (document.body.classList.contains('transparent-header')) {
+                    navbar.classList.add('navbar-transparent');
+                }
+            }
         }
         
         // Auto-hide navbar on scroll down (only on non-dashboard pages)
         if (!document.body.dataset.page || document.body.dataset.page !== 'dashboard') {
             if (scrollY > lastScrollY && scrollY > 100) {
-                // Scrolling down
+                // Scrolling down - hide navbar
                 navbar.style.transform = 'translateY(-100%)';
             } else {
-                // Scrolling up
+                // Scrolling up - show navbar
                 navbar.style.transform = 'translateY(0)';
+                
+                // Make sure navbar has white background when reappearing during scroll
+                if (scrollY > 10) {
+                    navbar.classList.add('white-bg');
+                    navbar.classList.remove('navbar-transparent');
+                }
             }
         }
         
@@ -364,6 +381,8 @@ function initializeScrollEffects() {
     // Apply scroll effects based on page type
     if (!document.body.dataset.page || document.body.dataset.page !== 'dashboard') {
         window.addEventListener('scroll', requestNavbarUpdate);
+        // Run once on page load to set initial state
+        updateNavbar();
     }
 }
 
