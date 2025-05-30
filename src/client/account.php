@@ -262,11 +262,22 @@ try {
         $confirmed_stmt->execute();
         $confirmed_result = $confirmed_stmt->fetch(PDO::FETCH_ASSOC);
         
+        // Get actual favorites count from user_favorites table
+        $favorites_query = "SELECT COUNT(*) as favorites_count
+                           FROM user_favorites WHERE user_id = :user_id";
+        $favorites_stmt = $db->prepare($favorites_query);
+        $favorites_stmt->bindParam(':user_id', $_SESSION['user_id']);
+        $favorites_stmt->execute();
+        $favorites_result = $favorites_stmt->fetch(PDO::FETCH_ASSOC);
+        
         if ($total_result) {
             $stats['total_appointments'] = (int)$total_result['total_appointments'];
         }
         if ($confirmed_result) {
             $stats['confirmed_appointments'] = (int)$confirmed_result['confirmed_appointments'];
+        }
+        if ($favorites_result) {
+            $stats['favorites'] = (int)$favorites_result['favorites_count'];
         }
     }
 } catch (Exception $e) {
@@ -313,8 +324,118 @@ try {
         body {
             background: var(--bg-secondary);
             color: var(--text-primary);
-            padding-top: 80px;
+            padding-top: 0 !important;
             transition: all 0.3s ease;
+        }
+
+        /* Hide any potential navigation */
+        body .navbar,
+        body nav {
+            display: none !important;
+        }
+
+        /* Enhanced header styling to match dashboard */
+        .luxury-header {
+            background: #000 !important;
+            padding: 1rem 0;
+            color: white;
+            margin-bottom: 0;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .brand-logo {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-decoration: none !important;
+            color: white !important;
+        }
+
+        .brand-logo img {
+            height: 80px !important;
+        }
+
+        .brand-logo:hover {
+            color: rgba(255, 255, 255, 0.9) !important;
+        }
+
+        .user-profile {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            margin-right: 2rem;
+        }
+
+        .user-profile:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .user-info .fw-semibold {
+            font-size: 0.95rem;
+            margin-bottom: 2px;
+        }
+
+        .user-info small {
+            font-size: 0.8rem;
+            opacity: 0.9;
+        }
+
+        /* Breadcrumb styling */
+        .breadcrumb-container {
+            background: white;
+            padding: 1rem 0;
+            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 0;
+        }
+
+        .breadcrumb-custom {
+            background: none;
+            margin-bottom: 0;
+            padding: 0;
+        }
+
+        .breadcrumb-custom .breadcrumb-item {
+            color: #6c757d;
+        }
+
+        .breadcrumb-custom .breadcrumb-item.active {
+            color: #333;
+            font-weight: 600;
+        }
+
+        .breadcrumb-custom .breadcrumb-item + .breadcrumb-item::before {
+            content: "/";
+            color: #dee2e6;
+        }
+
+        .breadcrumb-custom .breadcrumb-item a {
+            color: var(--text-secondary);
+            text-decoration: none;
         }
 
         .settings-container {
@@ -326,10 +447,67 @@ try {
         .settings-header {
             background: linear-gradient(135deg, var(--primary-color) 0%, #f4d03f 100%);
             color: white;
-            padding: 2rem;
-            border-radius: 20px;
+            padding: 3rem 0 2rem;
+            border-radius: 1rem;
             margin-bottom: 2rem;
             box-shadow: var(--card-shadow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .settings-header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 300px;
+            height: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+        }
+
+        .settings-header .container {
+            position: relative;
+            z-index: 1;
+        }
+
+        .settings-header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .settings-header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            margin-bottom: 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
         }
 
         .settings-card {
@@ -528,88 +706,95 @@ try {
             border: 1px solid #495057;
         }
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
+        body[data-theme="dark"] .settings-card {
+            background: #2c3034;
+            border-color: #495057;
         }
 
-        .stat-card {
-            background: var(--bg-secondary);
-            padding: 1.5rem;
-            border-radius: 12px;
-            text-align: center;
-            border: 1px solid var(--border-color);
+        body[data-theme="dark"] .card-header-custom {
+            background: #3a3f44;
+            color: #e9ecef;
         }
 
-        .stat-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            margin-bottom: 0.5rem;
+        body[data-theme="dark"] .form-control-custom {
+            background: #3a3f44;
+            border-color: #495057;
+            color: #e9ecef;
         }
 
-        .stat-label {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
+        body[data-theme="dark"] .form-label-custom {
+            color: #e9ecef;
         }
 
-        .breadcrumb-custom {
-            background: transparent;
-            padding: 0;
-            margin-bottom: 1rem;
+        body[data-theme="dark"] .btn-luxury {
+            background: linear-gradient(135deg, #b8941f 0%, #e6c036 100%);
         }
 
-        .breadcrumb-custom .breadcrumb-item a {
-            color: var(--text-secondary);
-            text-decoration: none;
+        body[data-theme="dark"] .btn-luxury:hover {
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
         }
 
-        .breadcrumb-custom .breadcrumb-item.active {
-            color: var(--text-primary);
+        body[data-theme="dark"] .btn-danger-custom {
+            background: linear-gradient(135deg, #c82333 0%, #d63031 100%);
         }
 
-        @media (max-width: 768px) {
-            .settings-container {
-                padding: 1rem;
-            }
-            
-            .settings-header {
-                padding: 1.5rem;
-            }
-            
-            .card-body-custom {
-                padding: 1.5rem;
-            }
+        body[data-theme="dark"] .btn-danger-custom:hover {
+            background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%);
         }
     </style>
 </head>
-<body data-user-logged-in="true">
-    <!-- Include Navigation -->
-    <?php include '../includes/navigation.php'; ?>
+<body data-user-logged-in="true" data-page="account">
+    <!-- Header -->
+    <header class="luxury-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <a href="../pages/home.php" class="brand-logo text-decoration-none">
+                        <img src="../assets/images/logo1.png" alt="Omnes Real Estate" height="40">
+                    </a>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="user-profile d-inline-flex align-items-center">
+                        <div class="user-avatar me-2">
+                            <?= strtoupper(substr($user['first_name'] ?? 'U', 0, 1) . substr($user['last_name'] ?? 'U', 0, 1)) ?>
+                        </div>
+                        <div class="user-info me-2">
+                            <div class="fw-semibold"><?= htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?></div>
+                            <small><?= ucfirst($user['role'] ?? 'Member') ?> Account</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb-container">
+        <div class="container">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb breadcrumb-custom">
+                    <li class="breadcrumb-item"><a href="../pages/home.php"><i class="fas fa-home me-1"></i>Home</a></li>
+                    <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
+                    <li class="breadcrumb-item active">Account Settings</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
 
     <div class="settings-container">
-        <!-- Breadcrumb -->
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb breadcrumb-custom">
-                <li class="breadcrumb-item"><a href="../pages/home.php"><i class="fas fa-home me-1"></i>Home</a></li>
-                <li class="breadcrumb-item"><a href="dashboard.php">Dashboard</a></li>
-                <li class="breadcrumb-item active">Account Settings</li>
-            </ol>
-        </nav>
-
         <!-- Header -->
         <div class="settings-header">
-            <div class="row align-items-center">
-                <div class="col-md-8">
-                    <h1 class="mb-2"><i class="fas fa-user-cog me-3"></i>Account Settings</h1>
-                    <p class="mb-0 opacity-90">Manage your profile, preferences, and security settings</p>
-                </div>
-                <div class="col-md-4 text-end">
-                    <a href="dashboard.php" class="btn btn-light">
-                        <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                    </a>
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h1><i class="fas fa-user-cog me-3"></i>Account Settings</h1>
+                        <p class="mb-0">Manage your profile, preferences, and security settings</p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="dashboard.php" class="btn btn-light">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

@@ -1041,8 +1041,17 @@ try {
                     <div class="p-3 border-top">
                         <h6 class="text-muted mb-3 text-uppercase fw-semibold" style="font-size: 0.75rem; letter-spacing: 0.05em;">Quick Actions</h6>
                         <div class="d-grid gap-2">
-                            <a href="?section=search" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-search me-1"></i>Search Properties
+                            <a href="dashboard.php" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-chart-pie me-1"></i>Dashboard
+                            </a>
+                            <a href="account.php" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-user-cog me-1"></i>Account Settings
+                            </a>
+                            <a href="?section=favorites#favoritesSection" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-heart me-1"></i>My Favorites
+                            </a>
+                            <a href="?section=appointments" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-calendar-alt me-1"></i>Appointments
                             </a>
                             <a href="../auth/logout.php" class="btn btn-outline-secondary btn-sm">
                                 <i class="fas fa-sign-out-alt me-1"></i>Logout
@@ -1320,8 +1329,8 @@ try {
                     <!-- Content will be populated by JavaScript -->
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <a href="../pages/explore.php" class="btn btn-primary" id="explorePropertiesBtn">
+                <button type="button" class="btn btn-dark fw-bold" data-bs-dismiss="modal">Close</button>
+                <a href="../pages/explore.php" class="btn btn-primary" id="explorePropertiesBtn">
                         <i class="fas fa-search me-1"></i>Explore All Properties
                     </a>
                 </div>
