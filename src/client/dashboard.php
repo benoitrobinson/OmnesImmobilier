@@ -837,7 +837,6 @@ try {
                                 <div class="fw-semibold"><?= htmlspecialchars($user_data['first_name'] . ' ' . $user_data['last_name']) ?></div>
                                 <small><?= ucfirst($user_data['role']) ?> Member</small>
                             </div>
-                            <i class="fas fa-chevron-down"></i>
                         </div>
                         <ul class="dropdown-menu dropdown-menu-end dashboard-dropdown-menu">
                             <li class="dropdown-header">

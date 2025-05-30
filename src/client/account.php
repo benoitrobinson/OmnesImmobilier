@@ -741,6 +741,110 @@ try {
         body[data-theme="dark"] .btn-danger-custom:hover {
             background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%);
         }
+
+        /* Enhanced dropdown in header - matching dashboard style */
+        .luxury-header .dropdown-menu,
+        .account-dropdown-menu {
+            background: white !important;
+            backdrop-filter: blur(20px);
+            border: none !important;
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.25) !important;
+            border-radius: 16px !important;
+            margin-top: 20px !important;
+            z-index: 10050 !important;
+            min-width: 320px;
+            max-width: 380px;
+            padding: 1rem 0;
+            right: 2rem !important;
+            left: auto !important;
+            transform: none !important;
+            border: 2px solid rgba(212, 175, 55, 0.2) !important;
+            position: absolute !important;
+            top: 100% !important;
+        }
+
+        /* Account dropdown hover functionality */
+        .account-dropdown:hover .account-dropdown-menu {
+            display: block !important;
+        }
+
+        /* Account dropdown animations */
+        .account-dropdown-menu {
+            opacity: 0;
+            transform: translateY(-10px) scale(0.95);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
+            display: none;
+        }
+
+        .account-dropdown:hover .account-dropdown-menu,
+        .account-dropdown .dropdown-menu.show {
+            opacity: 1 !important;
+            transform: translateY(0) scale(1) !important;
+            pointer-events: auto !important;
+            display: block !important;
+        }
+
+        .luxury-header .dropdown-header {
+            padding: 1rem 1.5rem 0.5rem;
+            color: #6c757d;
+            font-weight: 600;
+        }
+
+        .luxury-header .user-info-detailed {
+            padding: 0.5rem;
+        }
+
+        .luxury-header .user-avatar-large {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #d4af37 0%, #f4d03f 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.1rem;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .luxury-header .dropdown-item,
+        .account-dropdown-menu .dropdown-item {
+            color: #333 !important;
+            padding: 0.8rem 1.5rem;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            border-radius: 0;
+            white-space: normal;
+            background: transparent;
+        }
+
+        .luxury-header .dropdown-item:hover,
+        .account-dropdown-menu .dropdown-item:hover {
+            background: #f8f9fa !important;
+            color: #d4af37 !important;
+            transform: none !important;
+            border-radius: 8px;
+            margin: 0 0.5rem;
+        }
+
+        .luxury-header .dropdown-item i,
+        .account-dropdown-menu .dropdown-item i {
+            width: 24px;
+            text-align: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .luxury-header .stat-number,
+        .account-dropdown-menu .stat-number {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #d4af37;
+        }
     </style>
 </head>
 <body data-user-logged-in="true" data-page="account">
@@ -754,14 +858,99 @@ try {
                     </a>
                 </div>
                 <div class="col-md-6 text-end">
-                    <div class="user-profile d-inline-flex align-items-center">
-                        <div class="user-avatar me-2">
-                            <?= strtoupper(substr($user['first_name'] ?? 'U', 0, 1) . substr($user['last_name'] ?? 'U', 0, 1)) ?>
+                    <div class="dropdown account-dropdown">
+                        <div class="user-profile d-inline-flex align-items-center dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" style="cursor: pointer;">
+                            <div class="user-avatar me-2">
+                                <?= strtoupper(substr($user['first_name'] ?? 'U', 0, 1) . substr($user['last_name'] ?? 'U', 0, 1)) ?>
+                            </div>
+                            <div class="user-info me-2">
+                                <div class="fw-semibold"><?= htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?></div>
+                                <small><?= ucfirst($user['role'] ?? 'Member') ?> Account</small>
+                            </div>
                         </div>
-                        <div class="user-info me-2">
-                            <div class="fw-semibold"><?= htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?></div>
-                            <small><?= ucfirst($user['role'] ?? 'Member') ?> Account</small>
-                        </div>
+                        <ul class="dropdown-menu dropdown-menu-end account-dropdown-menu">
+                            <li class="dropdown-header">
+                                <div class="user-info-detailed">
+                                    <div class="user-avatar-large mx-auto mb-2">
+                                        <?= strtoupper(substr($user['first_name'] ?? 'U', 0, 1) . substr($user['last_name'] ?? 'U', 0, 1)) ?>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="fw-semibold"><?= htmlspecialchars(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? '')) ?></div>
+                                        <small class="text-muted"><?= ucfirst($user['role'] ?? 'Member') ?> Member</small>
+                                    </div>
+                                </div>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            
+                            <!-- Quick Stats -->
+                            <li class="px-3 py-2">
+                                <div class="row text-center">
+                                    <div class="col-4">
+                                        <div class="stat-number"><?= $stats['total_appointments'] ?></div>
+                                        <small class="text-muted">Appointments</small>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="stat-number"><?= $stats['favorites'] ?></div>
+                                        <small class="text-muted">Favorites</small>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="stat-number"><?= $stats['properties_viewed'] ?></div>
+                                        <small class="text-muted">Views</small>
+                                    </div>
+                                </div>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            
+                            <!-- Navigation Links -->
+                            <li>
+                                <a class="dropdown-item" href="dashboard.php">
+                                    <i class="fas fa-chart-pie me-2 text-primary"></i>
+                                    <div>
+                                        <div class="fw-semibold">Dashboard</div>
+                                        <small class="text-muted">Overview & Statistics</small>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="account.php">
+                                    <i class="fas fa-user-cog me-2 text-warning"></i>
+                                    <div>
+                                        <div class="fw-semibold">Account Settings</div>
+                                        <small class="text-muted">Profile & Preferences</small>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="dashboard.php?section=favorites">
+                                    <i class="fas fa-heart me-2 text-danger"></i>
+                                    <div>
+                                        <div class="fw-semibold">My Favorites</div>
+                                        <small class="text-muted">Saved Properties</small>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="dashboard.php?section=appointments">
+                                    <i class="fas fa-calendar-alt me-2 text-success"></i>
+                                    <div>
+                                        <div class="fw-semibold">Appointments</div>
+                                        <small class="text-muted">Schedule & History</small>
+                                    </div>
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            
+                            <!-- Logout -->
+                            <li>
+                                <a class="dropdown-item text-danger" href="../auth/logout.php">
+                                    <i class="fas fa-sign-out-alt me-2"></i>
+                                    <div>
+                                        <div class="fw-semibold">Sign Out</div>
+                                        <small class="text-muted">End your session</small>
+                                    </div>
+                                </a>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -1051,6 +1240,48 @@ try {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // Account dropdown hover functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const accountDropdown = document.querySelector('.account-dropdown');
+            const dropdownMenu = document.querySelector('.account-dropdown-menu');
+            
+            if (accountDropdown && dropdownMenu) {
+                // Show dropdown on hover
+                accountDropdown.addEventListener('mouseenter', function() {
+                    dropdownMenu.style.display = 'block';
+                    setTimeout(() => {
+                        dropdownMenu.style.opacity = '1';
+                        dropdownMenu.style.transform = 'translateY(0) scale(1)';
+                        dropdownMenu.style.pointerEvents = 'auto';
+                    }, 10);
+                });
+                
+                // Hide dropdown when leaving both elements
+                accountDropdown.addEventListener('mouseleave', function(e) {
+                    if (!dropdownMenu.contains(e.relatedTarget)) {
+                        hideDropdown();
+                    }
+                });
+                
+                dropdownMenu.addEventListener('mouseleave', function(e) {
+                    if (!accountDropdown.contains(e.relatedTarget)) {
+                        hideDropdown();
+                    }
+                });
+                
+                function hideDropdown() {
+                    dropdownMenu.style.opacity = '0';
+                    dropdownMenu.style.transform = 'translateY(-10px) scale(0.95)';
+                    dropdownMenu.style.pointerEvents = 'none';
+                    setTimeout(() => {
+                        if (dropdownMenu.style.opacity === '0') {
+                            dropdownMenu.style.display = 'none';
+                        }
+                    }, 300);
+                }
+            }
+        });
+
         // Theme selection
         function selectTheme(theme) {
             // Update UI
