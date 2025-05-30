@@ -199,6 +199,151 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
     
+    elseif ($action === 'update_payment') {
+        $card_number = trim($_POST['card_number'] ?? '');
+        $card_holder_name = trim($_POST['card_holder_name'] ?? '');
+        $expiration_month = trim($_POST['expiration_month'] ?? '');
+        $expiration_year = trim($_POST['expiration_year'] ?? '');
+        $billing_address_line1 = trim($_POST['billing_address_line1'] ?? '');
+        $billing_city = trim($_POST['billing_city'] ?? '');
+        $billing_state = trim($_POST['billing_state'] ?? '');
+        $billing_postal_code = trim($_POST['billing_postal_code'] ?? '');
+        $billing_country = trim($_POST['billing_country'] ?? 'France');
+        $is_default = isset($_POST['is_default']) ? 1 : 0;
+        
+        // Validation
+        if (empty($card_number) || empty($card_holder_name) || empty($expiration_month) || empty($expiration_year) ||
+            empty($billing_address_line1) || empty($billing_city) || empty($billing_state) || empty($billing_postal_code)) {
+            $error = 'All payment and billing fields are required.';
+        } elseif (!preg_match('/^\d{16}$/', $card_number)) {
+            $error = 'Card number must be exactly 16 digits.';
+        } elseif (!preg_match('/^[a-zA-Z\s\'-]{2,100}$/', $card_holder_name)) {
+            $error = 'Card holder name must be between 2-100 characters and contain only letters, spaces, hyphens, and apostrophes.';
+        } elseif (!in_array($expiration_month, range(1, 12))) {
+            $error = 'Invalid expiration month.';
+        } elseif ($expiration_year < date('Y') || $expiration_year > (date('Y') + 20)) {
+            $error = 'Invalid expiration year.';
+        } else {
+            // Validate expiration date is not in the past
+            $current_year = (int)date('Y');
+            $current_month = (int)date('m');
+            
+            if ($expiration_year < $current_year || ($expiration_year == $current_year && $expiration_month < $current_month)) {
+                $error = 'Card expiration date cannot be in the past.';
+            } else {
+                try {
+                    // Determine card type based on first digit
+                    $first_digit = substr($card_number, 0, 1);
+                    $first_two_digits = substr($card_number, 0, 2);
+                    $card_type = 'Unknown';
+                    
+                    if ($first_digit == '4') {
+                        $card_type = 'Visa';
+                    } elseif (in_array($first_two_digits, ['51', '52', '53', '54', '55']) || 
+                              (intval($first_two_digits) >= 22 && intval($first_two_digits) <= 27)) {
+                        $card_type = 'MasterCard';
+                    } elseif (in_array($first_two_digits, ['34', '37'])) {
+                        $card_type = 'American Express';
+                    } elseif ($first_two_digits == '60') {
+                        $card_type = 'Discover';
+                    }
+                    
+                    // Get last 4 digits only for storage
+                    $card_last_four = substr($card_number, -4);
+                    
+                    // Check if payment_information table exists with correct schema
+                    $table_check = "SHOW TABLES LIKE 'payment_information'";
+                    $table_stmt = $db->prepare($table_check);
+                    $table_stmt->execute();
+                    
+                    if ($table_stmt->rowCount() == 0) {
+                        // Create payment_information table with secure design
+                        $create_table = "CREATE TABLE payment_information (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            user_id INT NOT NULL,
+                            card_type VARCHAR(50) NOT NULL,
+                            card_last_four VARCHAR(4) NOT NULL,
+                            card_holder_name VARCHAR(100) NOT NULL,
+                            expiration_month TINYINT NOT NULL,
+                            expiration_year SMALLINT NOT NULL,
+                            billing_address_line1 VARCHAR(255) NOT NULL,
+                            billing_city VARCHAR(100) NOT NULL,
+                            billing_state VARCHAR(100) NOT NULL,
+                            billing_postal_code VARCHAR(20) NOT NULL,
+                            billing_country VARCHAR(100) NOT NULL DEFAULT 'France',
+                            is_default BOOLEAN DEFAULT FALSE,
+                            is_verified BOOLEAN DEFAULT FALSE,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                            INDEX idx_user_id (user_id)
+                        )";
+                        $db->exec($create_table);
+                    }
+                    
+                    // Insert or update payment information
+                    $payment_check = "SELECT id FROM payment_information WHERE user_id = :user_id";
+                    $payment_stmt = $db->prepare($payment_check);
+                    $payment_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                    $payment_stmt->execute();
+                    
+                    if ($payment_stmt->rowCount() > 0) {
+                        // Update existing payment info
+                        $update_payment = "UPDATE payment_information SET 
+                                         card_type = :card_type,
+                                         card_last_four = :card_last_four,
+                                         card_holder_name = :card_holder_name,
+                                         expiration_month = :expiration_month,
+                                         expiration_year = :expiration_year,
+                                         billing_address_line1 = :billing_address_line1,
+                                         billing_city = :billing_city,
+                                         billing_state = :billing_state,
+                                         billing_postal_code = :billing_postal_code,
+                                         billing_country = :billing_country,
+                                         is_default = :is_default,
+                                         updated_at = CURRENT_TIMESTAMP
+                                         WHERE user_id = :user_id";
+                        $update_stmt = $db->prepare($update_payment);
+                    } else {
+                        // Insert new payment info
+                        $update_payment = "INSERT INTO payment_information (
+                                         user_id, card_type, card_last_four, card_holder_name,
+                                         expiration_month, expiration_year, billing_address_line1,
+                                         billing_city, billing_state, billing_postal_code,
+                                         billing_country, is_default)
+                                         VALUES (:user_id, :card_type, :card_last_four, :card_holder_name,
+                                         :expiration_month, :expiration_year, :billing_address_line1,
+                                         :billing_city, :billing_state, :billing_postal_code,
+                                         :billing_country, :is_default)";
+                        $update_stmt = $db->prepare($update_payment);
+                    }
+                    
+                    $update_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                    $update_stmt->bindParam(':card_type', $card_type);
+                    $update_stmt->bindParam(':card_last_four', $card_last_four);
+                    $update_stmt->bindParam(':card_holder_name', $card_holder_name);
+                    $update_stmt->bindParam(':expiration_month', $expiration_month);
+                    $update_stmt->bindParam(':expiration_year', $expiration_year);
+                    $update_stmt->bindParam(':billing_address_line1', $billing_address_line1);
+                    $update_stmt->bindParam(':billing_city', $billing_city);
+                    $update_stmt->bindParam(':billing_state', $billing_state);
+                    $update_stmt->bindParam(':billing_postal_code', $billing_postal_code);
+                    $update_stmt->bindParam(':billing_country', $billing_country);
+                    $update_stmt->bindParam(':is_default', $is_default);
+                    
+                    if ($update_stmt->execute()) {
+                        $success = 'Payment information updated successfully!';
+                    } else {
+                        $error = 'Error updating payment information. Please try again.';
+                    }
+                } catch (PDOException $e) {
+                    error_log("Payment update error: " . $e->getMessage());
+                    $error = 'Database error occurred. Please try again.';
+                }
+            }
+        }
+    }
+    
     elseif ($action === 'change_password') {
         $current_password = $_POST['current_password'] ?? '';
         $new_password = $_POST['new_password'] ?? '';
@@ -283,6 +428,18 @@ try {
 } catch (Exception $e) {
     error_log("Stats error: " . $e->getMessage());
     // Keep default stats values
+}
+
+// Get existing payment information
+$payment_info = null;
+try {
+    $payment_query = "SELECT * FROM payment_information WHERE user_id = :user_id";
+    $payment_stmt = $db->prepare($payment_query);
+    $payment_stmt->bindParam(':user_id', $_SESSION['user_id']);
+    $payment_stmt->execute();
+    $payment_info = $payment_stmt->fetch(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    // Table might not exist yet, that's ok
 }
 ?>
 
@@ -1071,6 +1228,166 @@ try {
                     </div>
                 </div>
 
+                <!-- Payment Information -->
+                <div class="settings-card">
+                    <div class="card-header-custom">
+                        <i class="fas fa-credit-card me-2"></i>Payment Information
+                    </div>
+                    <div class="card-body-custom">
+                        <form method="POST" action="" id="paymentForm">
+                            <input type="hidden" name="action" value="update_payment">
+                            
+                            <!-- Card Information -->
+                            <h6 class="mb-3 fw-bold text-primary"><i class="fas fa-credit-card me-2"></i>Card Details</h6>
+                            
+                            <div class="form-group-custom">
+                                <label class="form-label-custom" for="card_number">Card Number *</label>
+                                <input type="text" class="form-control-custom" id="card_number" name="card_number" 
+                                       placeholder="1234567890123456" maxlength="16" required
+                                       <?php if ($payment_info): ?>
+                                           value="************<?= htmlspecialchars($payment_info['card_last_four']) ?>"
+                                           data-masked="true"
+                                           data-last-four="<?= htmlspecialchars($payment_info['card_last_four']) ?>"
+                                       <?php endif; ?>>
+                                <small class="text-muted">Enter your 16-digit card number (only last 4 digits will be stored)</small>
+                                <?php if ($payment_info): ?>
+                                    <div class="mt-2 p-2 bg-light rounded">
+                                        <small class="text-muted">
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            Current card: <?= htmlspecialchars($payment_info['card_type']) ?> ending in <?= htmlspecialchars($payment_info['card_last_four']) ?>
+                                        </small>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <div class="form-group-custom">
+                                <label class="form-label-custom" for="card_holder_name">Card Holder Name *</label>
+                                <input type="text" class="form-control-custom" id="card_holder_name" name="card_holder_name" 
+                                       value="<?= $payment_info ? htmlspecialchars($payment_info['card_holder_name']) : '' ?>"
+                                       placeholder="John Doe" required>
+                                <small class="text-muted">Name as it appears on your card</small>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group-custom">
+                                        <label class="form-label-custom" for="expiration_month">Expiration Month *</label>
+                                        <select class="form-control-custom" id="expiration_month" name="expiration_month" required>
+                                            <option value="">Select Month</option>
+                                            <?php for ($i = 1; $i <= 12; $i++): ?>
+                                                <option value="<?= $i ?>" <?= ($payment_info && $payment_info['expiration_month'] == $i) ? 'selected' : '' ?>>
+                                                    <?= sprintf('%02d - %s', $i, date('F', mktime(0, 0, 0, $i, 1))) ?>
+                                                </option>
+                                            <?php endfor; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group-custom">
+                                        <label class="form-label-custom" for="expiration_year">Expiration Year *</label>
+                                        <select class="form-control-custom" id="expiration_year" name="expiration_year" required>
+                                            <option value="">Select Year</option>
+                                            <?php for ($i = date('Y'); $i <= date('Y') + 20; $i++): ?>
+                                                <option value="<?= $i ?>" <?= ($payment_info && $payment_info['expiration_year'] == $i) ? 'selected' : '' ?>>
+                                                    <?= $i ?>
+                                                </option>
+                                            <?php endfor; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Billing Address -->
+                            <h6 class="mb-3 fw-bold text-primary mt-4"><i class="fas fa-map-marker-alt me-2"></i>Billing Address</h6>
+                            
+                            <div class="form-group-custom">
+                                <label class="form-label-custom" for="billing_address_line1">Address Line 1 *</label>
+                                <input type="text" class="form-control-custom" id="billing_address_line1" name="billing_address_line1" 
+                                       value="<?= $payment_info ? htmlspecialchars($payment_info['billing_address_line1']) : '' ?>"
+                                       placeholder="123 Main Street" required>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group-custom">
+                                        <label class="form-label-custom" for="billing_city">City *</label>
+                                        <input type="text" class="form-control-custom" id="billing_city" name="billing_city" 
+                                               value="<?= $payment_info ? htmlspecialchars($payment_info['billing_city']) : '' ?>"
+                                               placeholder="Paris" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group-custom">
+                                        <label class="form-label-custom" for="billing_state">State/Region *</label>
+                                        <input type="text" class="form-control-custom" id="billing_state" name="billing_state" 
+                                               value="<?= $payment_info ? htmlspecialchars($payment_info['billing_state']) : '' ?>"
+                                               placeholder="Île-de-France" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group-custom">
+                                        <label class="form-label-custom" for="billing_postal_code">Postal Code *</label>
+                                        <input type="text" class="form-control-custom" id="billing_postal_code" name="billing_postal_code" 
+                                               value="<?= $payment_info ? htmlspecialchars($payment_info['billing_postal_code']) : '' ?>"
+                                               placeholder="75001" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group-custom">
+                                        <label class="form-label-custom" for="billing_country">Country *</label>
+                                        <select class="form-control-custom" id="billing_country" name="billing_country" required>
+                                            <option value="France" <?= (!$payment_info || $payment_info['billing_country'] == 'France') ? 'selected' : '' ?>>France</option>
+                                            <option value="Belgium" <?= ($payment_info && $payment_info['billing_country'] == 'Belgium') ? 'selected' : '' ?>>Belgium</option>
+                                            <option value="Switzerland" <?= ($payment_info && $payment_info['billing_country'] == 'Switzerland') ? 'selected' : '' ?>>Switzerland</option>
+                                            <option value="Spain" <?= ($payment_info && $payment_info['billing_country'] == 'Spain') ? 'selected' : '' ?>>Spain</option>
+                                            <option value="Italy" <?= ($payment_info && $payment_info['billing_country'] == 'Italy') ? 'selected' : '' ?>>Italy</option>
+                                            <option value="Germany" <?= ($payment_info && $payment_info['billing_country'] == 'Germany') ? 'selected' : '' ?>>Germany</option>
+                                            <option value="United Kingdom" <?= ($payment_info && $payment_info['billing_country'] == 'United Kingdom') ? 'selected' : '' ?>>United Kingdom</option>
+                                            <option value="Other" <?= ($payment_info && !in_array($payment_info['billing_country'], ['France', 'Belgium', 'Switzerland', 'Spain', 'Italy', 'Germany', 'United Kingdom'])) ? 'selected' : '' ?>>Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group-custom">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="is_default" name="is_default" 
+                                           <?= ($payment_info && $payment_info['is_default']) ? 'checked' : '' ?>>
+                                    <label class="form-check-label" for="is_default">
+                                        Set as default payment method
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                <strong>Security Notice:</strong> We use industry-standard encryption to protect your payment information. Only the last 4 digits of your card number are stored for identification purposes.
+                            </div>
+                            
+                            <button type="submit" class="btn-luxury">
+                                <i class="fas fa-save me-2"></i>Save Payment Information
+                            </button>
+                            
+                            <?php if ($payment_info): ?>
+                                <div class="mt-3">
+                                    <small class="text-muted">
+                                        <i class="fas fa-clock me-1"></i>
+                                        Last updated: <?= date('F j, Y', strtotime($payment_info['updated_at'] ?? $payment_info['created_at'])) ?>
+                                        <?php if ($payment_info['is_verified']): ?>
+                                            <span class="badge bg-success ms-2">
+                                                <i class="fas fa-check me-1"></i>Verified
+                                            </span>
+                                        <?php endif; ?>
+                                    </small>
+                                </div>
+                            <?php endif; ?>
+                        </form>
+                    </div>
+                </div>
+
                 <!-- Appearance & Preferences -->
                 <div class="settings-card">
                     <div class="card-header-custom">
@@ -1282,6 +1599,148 @@ try {
             }
         });
 
+        // Password confirmation validation
+        document.getElementById('confirm_password').addEventListener('input', function() {
+            const newPassword = document.getElementById('new_password').value;
+            const confirmPassword = this.value;
+            
+            if (confirmPassword && newPassword !== confirmPassword) {
+                this.setCustomValidity('Passwords do not match');
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+
+        // Payment form validation
+        document.getElementById('card_number').addEventListener('input', function() {
+            // Check if this is a masked field that user is starting to edit
+            if (this.dataset.masked === 'true') {
+                // Clear the masked value when user starts typing
+                this.value = '';
+                this.dataset.masked = 'false';
+                this.placeholder = '1234567890123456';
+                
+                // Remove the current card info display
+                const currentCardInfo = document.querySelector('.bg-light.rounded');
+                if (currentCardInfo) {
+                    currentCardInfo.style.display = 'none';
+                }
+            }
+            
+            // Only allow numbers
+            this.value = this.value.replace(/\D/g, '');
+            
+            // Limit to 16 digits
+            if (this.value.length > 16) {
+                this.value = this.value.slice(0, 16);
+            }
+            
+            // Show card type based on first digits
+            const cardType = getCardType(this.value);
+            updateCardTypeDisplay(cardType);
+        });
+        
+        // Handle focus event to clear masked value
+        document.getElementById('card_number').addEventListener('focus', function() {
+            if (this.dataset.masked === 'true') {
+                this.select(); // Select all text so user can easily replace it
+            }
+        });
+        
+        // Handle blur event to restore masked value if field is empty
+        document.getElementById('card_number').addEventListener('blur', function() {
+            if (this.value === '' && this.dataset.lastFour) {
+                this.value = '************' + this.dataset.lastFour;
+                this.dataset.masked = 'true';
+                
+                // Show the current card info again
+                const currentCardInfo = document.querySelector('.bg-light.rounded');
+                if (currentCardInfo) {
+                    currentCardInfo.style.display = 'block';
+                }
+            }
+        });
+        
+        // Payment form validation on submit
+        document.getElementById('paymentForm').addEventListener('submit', function(e) {
+            const cardNumber = document.getElementById('card_number').value;
+            const cardHolderName = document.getElementById('card_holder_name').value;
+            const expirationMonth = document.getElementById('expiration_month').value;
+            const expirationYear = document.getElementById('expiration_year').value;
+            
+            // Check if user is trying to submit with masked card number
+            if (cardNumber.includes('*')) {
+                e.preventDefault();
+                alert('Please enter a new card number or keep the current one by leaving the field unchanged.');
+                return;
+            }
+            
+            // Validate card number (16 digits)
+            if (!/^\d{16}$/.test(cardNumber)) {
+                e.preventDefault();
+                alert('Card number must be exactly 16 digits.');
+                return;
+            }
+            
+            // Validate card holder name
+            if (!/^[a-zA-Z\s\'-]{2,100}$/.test(cardHolderName)) {
+                e.preventDefault();
+                alert('Card holder name must be between 2-100 characters and contain only letters, spaces, hyphens, and apostrophes.');
+                return;
+            }
+            
+            // Validate expiration date is not in the past
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth() + 1;
+            
+            if (parseInt(expirationYear) < currentYear || 
+                (parseInt(expirationYear) === currentYear && parseInt(expirationMonth) < currentMonth)) {
+                e.preventDefault();
+                alert('Card expiration date cannot be in the past.');
+                return;
+            }
+        });
+        
+        // Function to determine card type
+        function getCardType(cardNumber) {
+            const firstDigit = cardNumber.charAt(0);
+            const firstTwoDigits = cardNumber.substring(0, 2);
+            
+            if (firstDigit === '4') {
+                return 'Visa';
+            } else if (['51', '52', '53', '54', '55'].includes(firstTwoDigits) || 
+                       (parseInt(firstTwoDigits) >= 22 && parseInt(firstTwoDigits) <= 27)) {
+                return 'MasterCard';
+            } else if (['34', '37'].includes(firstTwoDigits)) {
+                return 'American Express';
+            } else if (firstTwoDigits === '60') {
+                return 'Discover';
+            }
+            return 'Unknown';
+        }
+        
+        // Function to update card type display
+        function updateCardTypeDisplay(cardType) {
+            const cardNumberField = document.getElementById('card_number');
+            
+            // Remove any existing background styling that interferes with visibility
+            cardNumberField.style.backgroundImage = 'none';
+            
+            // You can add a subtle visual indicator next to the field instead
+            let existingIndicator = document.querySelector('.card-type-indicator');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+            
+            if (cardType !== 'Unknown' && cardNumberField.value.length >= 4) {
+                const indicator = document.createElement('small');
+                indicator.className = 'card-type-indicator text-muted mt-1 d-block';
+                indicator.innerHTML = `<i class="fas fa-credit-card me-1"></i>Detected: ${cardType}`;
+                cardNumberField.parentNode.appendChild(indicator);
+            }
+        }
+
         // Theme selection
         function selectTheme(theme) {
             // Update UI
@@ -1307,18 +1766,6 @@ try {
             // Save to localStorage
             localStorage.setItem('userTheme', theme);
         }
-
-        // Password confirmation validation
-        document.getElementById('confirm_password').addEventListener('input', function() {
-            const newPassword = document.getElementById('new_password').value;
-            const confirmPassword = this.value;
-            
-            if (confirmPassword && newPassword !== confirmPassword) {
-                this.setCustomValidity('Passwords do not match');
-            } else {
-                this.setCustomValidity('');
-            }
-        });
 
         // Initialize theme on page load
         document.addEventListener('DOMContentLoaded', function() {
