@@ -11,6 +11,19 @@ if (!isLoggedIn() || $_SESSION['role'] !== 'admin') {
 $database = Database::getInstance();
 $db = $database->getConnection();
 
+// Update appointment statuses before fetching statistics
+try {
+    $update_stmt = $db->prepare("
+        UPDATE appointments 
+        SET status = 'completed', updated_at = NOW() 
+        WHERE status = 'scheduled' 
+        AND appointment_date < NOW()
+    ");
+    $update_stmt->execute();
+} catch (Exception $e) {
+    error_log("Admin dashboard appointment update error: " . $e->getMessage());
+}
+
 // Get admin information
 $admin_data = getCurrentUser();
 

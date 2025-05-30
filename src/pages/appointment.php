@@ -10,6 +10,16 @@ if (!isLoggedIn()) {
 }
 
 $pdo = Database::getInstance()->getConnection();
+
+// First, update any scheduled appointments that are past their date to "completed"
+$update_stmt = $pdo->prepare("
+    UPDATE appointments 
+    SET status = 'completed', updated_at = NOW() 
+    WHERE status = 'scheduled' 
+    AND appointment_date < NOW()
+");
+$update_stmt->execute();
+
 // fetch all client appointments
 $stmt = $pdo->prepare("
   SELECT 
@@ -210,12 +220,20 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                       $status_colors = [
                         'scheduled' => 'success',
                         'cancelled' => 'danger',
-                        'completed' => 'info',
+                        'completed' => 'primary',
                         'pending' => 'warning'
                       ];
+                      $status_icons = [
+                        'scheduled' => 'fa-calendar-check',
+                        'cancelled' => 'fa-times-circle',
+                        'completed' => 'fa-check-circle',
+                        'pending' => 'fa-clock'
+                      ];
                       $status_color = $status_colors[$a['status']] ?? 'secondary';
+                      $status_icon = $status_icons[$a['status']] ?? 'fa-question-circle';
                       ?>
                       <span class="badge bg-<?= $status_color ?>">
+                        <i class="fas <?= $status_icon ?> me-1"></i>
                         <?= ucfirst(htmlspecialchars($a['status'])) ?>
                       </span>
                     </td>
@@ -229,9 +247,17 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <span class="text-muted">
                           <i class="fas fa-ban me-1"></i>Cancelled
                         </span>
-                      <?php elseif (strtotime($a['appointment_date']) <= time()): ?>
+                      <?php elseif ($a['status'] === 'completed'): ?>
+                        <span class="text-success">
+                          <i class="fas fa-check-circle me-1"></i>Completed
+                        </span>
+                      <?php elseif ($a['status'] === 'scheduled' && strtotime($a['appointment_date']) <= time()): ?>
+                        <span class="text-primary">
+                          <i class="fas fa-check-circle me-1"></i>Completed
+                        </span>
+                      <?php else: ?>
                         <span class="text-muted">
-                          <i class="fas fa-clock me-1"></i>Past
+                          <i class="fas fa-clock me-1"></i>Pending
                         </span>
                       <?php endif; ?>
                     </td>

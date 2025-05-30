@@ -177,7 +177,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     <style>
         body {
             background: #f8f9fa;
-            padding-top: 80px;
+            padding-top: 0 !important; /* Remove padding that creates gap */
+            margin: 0; /* Ensure no default margin */
+        }
+        
+        /* Fix for navigation positioning */
+        .navbar {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        
+        /* Add margin to container instead of body padding */
+        .main-container {
+            margin-top: 2rem;
+            padding-top: 1rem;
         }
         
         .appointment-card {
@@ -221,7 +234,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
     <?php include '../includes/header.php'; ?>
     <?php include '../includes/navigation.php'; ?>
     
-    <div class="container mt-4">
+    <div class="container main-container">
         <div class="row">
             <div class="col-md-8 mx-auto">
                 <?php if ($error): ?>

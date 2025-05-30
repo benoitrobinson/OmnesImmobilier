@@ -94,10 +94,12 @@ function showPropertyDetails(property, isFavorited = false) {
         images = [`../assets/images/property${property.id}-1.jpg`];
     }
     
-    // Check if user is logged in (you'll need to pass this from PHP)
+    // Check if user is logged in
     const isLoggedIn = typeof userLoggedIn !== 'undefined' && userLoggedIn;
     
     const modalBody = document.getElementById('propertyModalBody');
+    
+    // First, display the modal with basic info
     modalBody.innerHTML = `
         <div class="row">
             <div class="col-md-6">
@@ -126,6 +128,14 @@ function showPropertyDetails(property, isFavorited = false) {
         <hr>
         <h6><i class="fas fa-file-alt me-2"></i>Description</h6>
         <p>${property.description}</p>
+        
+        <!-- Referent agent section with loading state -->
+        <div class="referent-agent-line mb-3 p-2 bg-light rounded" id="agentInfo">
+            <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
+            <strong>Referent Agent:</strong> 
+            <span class="ms-1">Loading...</span>
+        </div>
+        
         <div class="d-grid">
             ${isLoggedIn ? `
                 <button type="button" 
@@ -140,5 +150,44 @@ function showPropertyDetails(property, isFavorited = false) {
             `}
         </div>
     `;
+    
+    // Fetch agent name if agent_id exists
+    if (property.agent_id) {
+        fetch(`../ajax/get_agent.php?agent_id=${property.agent_id}`)
+            .then(response => response.json())
+            .then(data => {
+                const agentInfoElement = document.getElementById('agentInfo');
+                if (data.success && data.agent) {
+                    agentInfoElement.innerHTML = `
+                        <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
+                        <strong>Referent Agent:</strong> 
+                        <span class="ms-1">${data.agent.first_name} ${data.agent.last_name}</span>
+                    `;
+                } else {
+                    agentInfoElement.innerHTML = `
+                        <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
+                        <strong>Referent Agent:</strong> 
+                        <span class="ms-1">Not assigned</span>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching agent:', error);
+                const agentInfoElement = document.getElementById('agentInfo');
+                agentInfoElement.innerHTML = `
+                    <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
+                    <strong>Referent Agent:</strong> 
+                    <span class="ms-1">Error loading agent info</span>
+                `;
+            });
+    } else {
+        // No agent assigned
+        const agentInfoElement = document.getElementById('agentInfo');
+        agentInfoElement.innerHTML = `
+            <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
+            <strong>Referent Agent:</strong> 
+            <span class="ms-1">Not assigned</span>
+        `;
+    }
 }
 
