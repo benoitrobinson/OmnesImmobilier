@@ -9,7 +9,7 @@ if (!isLoggedIn() || $_SESSION['role'] !== 'admin') {
 }
 
 $database = Database::getInstance();
-$db = $database->getConnection();
+$pdo = $database->getConnection();
 
 $success = '';
 $error = '';
@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $agent_id = (int)$_POST['agent_id'];
             
             // Check if agent has active properties or appointments
-            $check_stmt = $db->prepare("
+            $check_stmt = $pdo->prepare("
                 SELECT 
                     (SELECT COUNT(*) FROM properties WHERE agent_id = :agent_id AND status = 'available') as active_properties,
                     (SELECT COUNT(*) FROM appointments WHERE agent_id = :agent_id2 AND status = 'scheduled' AND appointment_date >= NOW()) as future_appointments
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Cannot delete agent. They have {$check['active_properties']} active properties and {$check['future_appointments']} future appointments.";
             } else {
                 // Delete agent (cascade will handle related records)
-                $delete_stmt = $db->prepare("DELETE FROM users WHERE id = :agent_id AND role = 'agent'");
+                $delete_stmt = $pdo->prepare("DELETE FROM users WHERE id = :agent_id AND role = 'agent'");
                 $delete_stmt->execute(['agent_id' => $agent_id]);
                 $success = 'Agent deleted successfully.';
             }
@@ -60,45 +60,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Get all agents with statistics
+// Get all agents with statistics - updated to show all users in agents table
 $agents = [];
 try {
     $query = "
         SELECT 
-            u.*,
-            a.*,
+            u.id,
+            u.email,
+            u.role,
+            u.created_at,
+            a.user_id as agent_user_id,
+            a.first_name,
+            a.last_name,
+            a.phone,
+            a.agency_name,
+            a.cv_file_path,
+            a.profile_picture_path,
             COUNT(DISTINCT p.id) as total_properties,
             COUNT(DISTINCT CASE WHEN p.status = 'available' THEN p.id END) as available_properties,
             COUNT(DISTINCT CASE WHEN p.status = 'sold' THEN p.id END) as sold_properties,
             COUNT(DISTINCT ap.id) as total_appointments,
             COUNT(DISTINCT CASE WHEN ap.status = 'scheduled' AND ap.appointment_date >= NOW() THEN ap.id END) as upcoming_appointments,
             COALESCE(SUM(CASE WHEN p.status = 'sold' THEN p.price END), 0) as total_sales
-        FROM users u
-        INNER JOIN agents a ON u.id = a.user_id
-        LEFT JOIN properties p ON u.id = p.agent_id
-        LEFT JOIN appointments ap ON u.id = ap.agent_id
+        FROM agents a
+        INNER JOIN users u ON a.user_id = u.id
+        LEFT JOIN properties p ON a.user_id = p.agent_id
+        LEFT JOIN appointments ap ON a.user_id = ap.agent_id
         WHERE u.role = 'agent'
-        GROUP BY u.id
+        GROUP BY a.user_id, u.id
         ORDER BY u.created_at DESC
     ";
     
-    $stmt = $db->prepare($query);
+    $stmt = $pdo->prepare($query);
     $stmt->execute();
     $agents = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
     error_log("Fetch agents error: " . $e->getMessage());
-    $error = 'Error loading agents.';
+    $error = 'Error loading agents: ' . $e->getMessage();
 }
 
-// Search functionality
+// Search functionality - updated field names
 $search = $_GET['search'] ?? '';
 if ($search) {
     $agents = array_filter($agents, function($agent) use ($search) {
         $searchLower = strtolower($search);
-        return strpos(strtolower($agent['first_name']), $searchLower) !== false ||
-               strpos(strtolower($agent['last_name']), $searchLower) !== false ||
+        return strpos(strtolower($agent['first_name'] ?? ''), $searchLower) !== false ||
+               strpos(strtolower($agent['last_name'] ?? ''), $searchLower) !== false ||
                strpos(strtolower($agent['email']), $searchLower) !== false ||
-               strpos(strtolower($agent['agency_name']), $searchLower) !== false;
+               strpos(strtolower($agent['agency_name'] ?? ''), $searchLower) !== false;
     });
 }
 ?>
@@ -129,14 +138,85 @@ if ($search) {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
-        /* Reuse styles from dashboard */
+        /* Admin Header - Updated to match client dashboard */
         .admin-header {
-            background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-secondary) 100%);
+            background: #000;
             color: white;
             padding: 1rem 0;
-            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
 
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: white !important;
+            text-decoration: none !important;
+        }
+
+        .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.8) !important;
+            font-weight: 500;
+            margin: 0 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-nav .nav-link:hover {
+            color: white !important;
+            transform: translateY(-1px);
+        }
+
+        .dropdown-toggle::after {
+            display: none;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            text-decoration: none !important;
+            color: white !important;
+        }
+
+        .user-profile:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white !important;
+        }
+
+        .user-avatar {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-secondary) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .user-role {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin: 0;
+        }
+
+        /* Reuse styles from dashboard */
         .brand-logo {
             font-size: 1.8rem;
             font-weight: 700;
@@ -282,23 +362,92 @@ if ($search) {
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <header class="admin-header">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <a href="../pages/home.php" class="brand-logo">
-                        <i class="fas fa-building me-2"></i>Omnes Real Estate - Admin
-                    </a>
-                </div>
-                <div class="col-md-6 text-end">
-                    <a href="dashboard.php" class="btn btn-light">
-                        <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                    </a>
+    <!-- Header - Updated to match dashboard -->
+    <nav class="navbar navbar-expand-lg admin-header">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center ms-3" href="../pages/home.php">
+                <img src="../assets/images/logo1.png" alt="Logo" width="120" height="50" class="me-3">
+            </a>
+            
+            <button class="navbar-toggler me-3" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="dashboard.php">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_clients.php">
+                            <i class="fas fa-users me-1"></i>Clients
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="manage_agents.php">
+                            <i class="fas fa-user-tie me-1"></i>Agents
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_properties.php">
+                            <i class="fas fa-home me-1"></i>Properties
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_appointments.php">
+                            <i class="fas fa-calendar-alt me-1"></i>Appointments
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="events.php">
+                            <i class="fas fa-calendar-star me-1"></i>Events
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="reports.php">
+                            <i class="fas fa-chart-bar me-1"></i>Reports
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="d-flex align-items-center me-3">
+                    <div class="dropdown">
+                        <a href="#" class="user-profile dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <div class="user-avatar">
+                                AC
+                            </div>
+                            <div class="user-info">
+                                <div class="user-name">Administrator</div>
+                                <div class="user-role">Admin</div>
+                            </div>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <h6 class="dropdown-header">
+                                    <i class="fas fa-user-shield me-2"></i>Admin Actions
+                                </h6>
+                            </li>
+                            <li><a class="dropdown-item" href="add_agent.php">
+                                <i class="fas fa-user-plus me-2"></i>Add New Agent
+                            </a></li>
+                            <li><a class="dropdown-item" href="add_property.php">
+                                <i class="fas fa-plus-circle me-2"></i>Add New Property
+                            </a></li>
+                            <li><a class="dropdown-item" href="add_client.php">
+                                <i class="fas fa-user-plus me-2"></i>Add New Client
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="../auth/logout.php">
+                                <i class="fas fa-sign-out-alt me-2"></i>Logout
+                            </a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
-    </header>
+    </nav>
 
     <div class="container mt-4">
         <div class="row">
@@ -403,11 +552,16 @@ if ($search) {
                                                     <?= strtoupper(substr($agent['first_name'], 0, 1) . substr($agent['last_name'], 0, 1)) ?>
                                                 </div>
                                                 <div>
-                                                    <h5 class="mb-1"><?= htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name']) ?></h5>
+                                                    <h5 class="mb-1"><?= htmlspecialchars(($agent['first_name'] ?? 'No') . ' ' . ($agent['last_name'] ?? 'Name')) ?></h5>
                                                     <p class="text-muted mb-0">
-                                                        <i class="fas fa-building me-1"></i><?= htmlspecialchars($agent['agency_name']) ?><br>
+                                                        <?php if (!empty($agent['agency_name'])): ?>
+                                                            <i class="fas fa-building me-1"></i><?= htmlspecialchars($agent['agency_name']) ?><br>
+                                                        <?php endif; ?>
                                                         <i class="fas fa-envelope me-1"></i><?= htmlspecialchars($agent['email']) ?><br>
-                                                        <i class="fas fa-phone me-1"></i><?= htmlspecialchars($agent['phone']) ?>
+                                                        <?php if (!empty($agent['phone'])): ?>
+                                                            <i class="fas fa-phone me-1"></i><?= htmlspecialchars($agent['phone']) ?><br>
+                                                        <?php endif; ?>
+                                                        <i class="fas fa-calendar me-1"></i>Joined <?= date('M Y', strtotime($agent['created_at'])) ?>
                                                     </p>
                                                 </div>
                                             </div>
@@ -438,14 +592,14 @@ if ($search) {
                                         
                                         <div class="col-md-4 text-end">
                                             <div class="btn-group">
-                                                <a href="edit_agent.php?id=<?= $agent['user_id'] ?>" class="btn btn-outline-primary btn-sm">
+                                                <a href="edit_agent.php?id=<?= $agent['id'] ?>" class="btn btn-outline-primary btn-sm">
                                                     <i class="fas fa-edit"></i> Edit
                                                 </a>
-                                                <a href="view_agent.php?id=<?= $agent['user_id'] ?>" class="btn btn-outline-info btn-sm">
+                                                <a href="view_agent.php?id=<?= $agent['id'] ?>" class="btn btn-outline-info btn-sm">
                                                     <i class="fas fa-eye"></i> View
                                                 </a>
                                                 <button type="button" class="btn btn-outline-danger btn-sm" 
-                                                        onclick="confirmDelete(<?= $agent['user_id'] ?>, '<?= htmlspecialchars($agent['first_name'] . ' ' . $agent['last_name']) ?>')">
+                                                        onclick="confirmDelete(<?= $agent['id'] ?>, '<?= htmlspecialchars(($agent['first_name'] ?? 'Agent') . ' ' . ($agent['last_name'] ?? '')) ?>')">
                                                     <i class="fas fa-trash"></i> Delete
                                                 </button>
                                             </div>

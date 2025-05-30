@@ -157,21 +157,86 @@ if ($filter !== 'all') {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
-        /* Reuse styles from dashboard */
+        /* Admin Header - Updated to match dashboard */
         .admin-header {
-            background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-secondary) 100%);
+            background: #000;
             color: white;
             padding: 1rem 0;
-            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .brand-logo {
-            font-size: 1.8rem;
+        .navbar-brand {
             font-weight: 700;
+            font-size: 1.5rem;
             color: white !important;
             text-decoration: none !important;
         }
 
+        .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.8) !important;
+            font-weight: 500;
+            margin: 0 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-nav .nav-link:hover,
+        .navbar-nav .nav-link.active {
+            color: white !important;
+            transform: translateY(-1px);
+        }
+
+        .dropdown-toggle::after {
+            display: none;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            text-decoration: none !important;
+            color: white !important;
+        }
+
+        .user-profile:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white !important;
+        }
+
+        .user-avatar {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, var(--admin-primary) 0%, var(--admin-secondary) 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .user-role {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin: 0;
+        }
+
+        /* Reuse styles from dashboard */
         .admin-sidebar {
             background: white;
             border-radius: 1rem;
@@ -333,23 +398,92 @@ if ($filter !== 'all') {
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <header class="admin-header">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <a href="../pages/home.php" class="brand-logo">
-                        <i class="fas fa-building me-2"></i>Omnes Real Estate - Admin
-                    </a>
-                </div>
-                <div class="col-md-6 text-end">
-                    <a href="dashboard.php" class="btn btn-light">
-                        <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                    </a>
+    <!-- Header - Updated to match dashboard -->
+    <nav class="navbar navbar-expand-lg admin-header">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center ms-3" href="../pages/home.php">
+                <img src="../assets/images/logo1.png" alt="Logo" width="120" height="50" class="me-3">
+            </a>
+            
+            <button class="navbar-toggler me-3" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="dashboard.php">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="manage_clients.php">
+                            <i class="fas fa-users me-1"></i>Clients
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_agents.php">
+                            <i class="fas fa-user-tie me-1"></i>Agents
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_properties.php">
+                            <i class="fas fa-home me-1"></i>Properties
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_appointments.php">
+                            <i class="fas fa-calendar-alt me-1"></i>Appointments
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="events.php">
+                            <i class="fas fa-calendar-star me-1"></i>Events
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="reports.php">
+                            <i class="fas fa-chart-bar me-1"></i>Reports
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="d-flex align-items-center me-3">
+                    <div class="dropdown">
+                        <a href="#" class="user-profile dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                            <div class="user-avatar">
+                                AC
+                            </div>
+                            <div class="user-info">
+                                <div class="user-name">Administrator</div>
+                                <div class="user-role">Admin</div>
+                            </div>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <h6 class="dropdown-header">
+                                    <i class="fas fa-user-shield me-2"></i>Admin Actions
+                                </h6>
+                            </li>
+                            <li><a class="dropdown-item" href="add_agent.php">
+                                <i class="fas fa-user-plus me-2"></i>Add New Agent
+                            </a></li>
+                            <li><a class="dropdown-item" href="add_property.php">
+                                <i class="fas fa-plus-circle me-2"></i>Add New Property
+                            </a></li>
+                            <li><a class="dropdown-item" href="add_client.php">
+                                <i class="fas fa-user-plus me-2"></i>Add New Client
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="../auth/logout.php">
+                                <i class="fas fa-sign-out-alt me-2"></i>Logout
+                            </a></li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
-    </header>
+    </nav>
 
     <div class="container mt-4">
         <div class="row">
@@ -368,7 +502,7 @@ if ($filter !== 'all') {
                         <a href="dashboard.php" class="nav-link-admin">
                             <i class="fas fa-chart-pie me-3"></i>Dashboard
                         </a>
-                        <a href="manage_clients.php" class="nav-link-admin">
+                        <a href="manage_clients.php" class="nav-link-admin active">
                             <i class="fas fa-users me-3"></i>Manage Clients
                         </a>
                         <a href="manage_agents.php" class="nav-link-admin">

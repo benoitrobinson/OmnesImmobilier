@@ -18,6 +18,12 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
+-- Create and use database
+--
+CREATE DATABASE IF NOT EXISTS `omnes_immobilier` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+USE `omnes_immobilier`;
+
+--
 -- Database: `omnes_immobilier`
 --
 
@@ -30,15 +36,14 @@ SET time_zone = "+00:00";
 DROP TABLE IF EXISTS `agents`;
 CREATE TABLE IF NOT EXISTS `agents` (
   `user_id` int NOT NULL,
+  `first_name` varchar(50) NOT NULL DEFAULT '',
+  `last_name` varchar(50) NOT NULL DEFAULT '',
+  `phone` varchar(15) NOT NULL DEFAULT '',
   `cv_file_path` varchar(255) DEFAULT '',
   `profile_picture_path` varchar(255) DEFAULT NULL,
   `agency_name` varchar(255) NOT NULL DEFAULT 'Independent Agent',
   `agency_email` varchar(100) DEFAULT '',
-  `license_number` varchar(50) DEFAULT '',
-  `languages_spoken` json DEFAULT NULL,
   `years_experience` int DEFAULT '0',
-  `commission_rate` decimal(5,2) DEFAULT '0.00',
-  `bio` text,
   `average_rating` decimal(3,2) DEFAULT '0.00',
   `total_sales` decimal(15,2) DEFAULT '0.00',
   `total_transactions` int DEFAULT '0',
@@ -50,10 +55,10 @@ CREATE TABLE IF NOT EXISTS `agents` (
 -- Dumping data for table `agents`
 --
 
-INSERT INTO `agents` (`user_id`, `cv_file_path`, `profile_picture_path`, `agency_name`, `agency_email`, `license_number`, `languages_spoken`, `years_experience`, `commission_rate`, `bio`, `average_rating`, `total_sales`, `total_transactions`) VALUES
-(2, '/path/to/cv/jean-pierre.pdf', '/path/to/profile/picture/jean-pierre.jpg', 'Omnes Agency', 'b@omnes.fr', '', NULL, 0, 0.00, NULL, 0.00, 0.00, 0),
-(5, '', '', 'Independent Agent', 'g@gmail.com', '', NULL, 0, 0.00, NULL, 0.00, 0.00, 0),
-(6, '', '', 'Independent Agent', 'ge@gmail.com', '', NULL, 0, 0.00, NULL, 0.00, 0.00, 0);
+INSERT INTO `agents` (`user_id`, `first_name`, `last_name`, `phone`, `cv_file_path`, `profile_picture_path`, `agency_name`, `agency_email`, `years_experience`, `average_rating`, `total_sales`, `total_transactions`) VALUES
+(2, 'Jean-Pierre', 'Segado', '+33600001111', '/path/to/cv/jean-pierre.pdf', '/path/to/profile/picture/jean-pierre.jpg', 'Omnes Agency', 'b@omnes.fr', 0, 0.00, 0.00, 0),
+(5, 'John', 'Doe', '0123456789', '', '', 'Independent Agent', 'g@gmail.com', 0, 0.00, 0.00, 0),
+(6, 'Alex', 'Colinet', '0125457885', '', '', 'Independent Agent', 'ge@gmail.com', 0, 0.00, 0.00, 0);
 
 -- --------------------------------------------------------
 
