@@ -1245,15 +1245,14 @@ try {
                                         <tbody>
                                             <?php foreach($apps as $a): ?>
                                                 <tr>
-                                                    <td>
-                                                        <div class="fw-semibold"><?= date('d M Y', strtotime($a['appointment_date'])) ?></div>
-                                                        <small class="text-muted"><?= date('H:i', strtotime($a['appointment_date'])) ?></small>
+                                                    <td style="min-width: 140px;">
+                                                        <div class="fw-semibold"><?= date('d M Y - H:i', strtotime($a['appointment_date'])) ?></div>
                                                     </td>
-                                                    <td>
+                                                    <td style="min-width: 200px;">
                                                         <div class="fw-semibold"><?= htmlspecialchars($a['property']) ?></div>
                                                         <small class="text-muted"><?= htmlspecialchars($a['address_line1'] . ', ' . $a['city']) ?></small>
                                                     </td>
-                                                    <td>
+                                                    <td style="min-width: 150px;">
                                                         <div class="fw-semibold"><?= htmlspecialchars($a['agent']) ?></div>
                                                         <small class="text-muted"><?= htmlspecialchars($a['agent_email']) ?></small>
                                                     </td>
@@ -1290,9 +1289,13 @@ try {
                                                             <span class="text-muted">
                                                                 <i class="fas fa-ban me-1"></i>Cancelled
                                                             </span>
-                                                        <?php elseif (strtotime($a['appointment_date']) <= time()): ?>
+                                                        <?php elseif ($a['status'] === 'completed'): ?>
+                                                            <span class="text-success">
+                                                                <i class="fas fa-check-circle me-1"></i>Completed
+                                                            </span>
+                                                        <?php elseif (strtotime($a['appointment_date']) <= time() && $a['status'] === 'scheduled'): ?>
                                                             <span class="text-muted">
-                                                                <i class="fas fa-clock me-1"></i>Past
+                                                                <i class="fas fa-clock me-1"></i>Past Due
                                                             </span>
                                                         <?php endif; ?>
                                                     </td>
