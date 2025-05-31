@@ -8,8 +8,9 @@ if (!isLoggedIn() || !isAgent()) {
     redirect('../auth/login.php');
 }
 
-// Use the global $pdo connection
-$db = $pdo;
+// ✅ CORRECT way to get database connection
+$database = Database::getInstance();
+$db = $database->getConnection();
 
 $error = '';
 $success = '';

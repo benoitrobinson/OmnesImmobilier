@@ -1,10 +1,17 @@
 <?php
 session_start();
 require '../config/database.php';
+require_once '../includes/functions.php';
 
 // ✅ CORRECT way to get database connection
 $database = Database::getInstance();
 $pdo = $database->getConnection();
+
+// Get user role for conditional functionality
+$user_role = $_SESSION['role'] ?? null;
+$is_client = ($user_role === 'client');
+$is_agent = ($user_role === 'agent');
+$is_admin = ($user_role === 'admin');
 
 // fetch filters
 $lt = $_GET['listingType'] ?? '';
@@ -33,9 +40,9 @@ $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $properties = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get user's favorites if logged in
+// Get user's favorites if logged in and is a client
 $userFavorites = [];
-if (isset($_SESSION['user_id'])) {
+if (isset($_SESSION['user_id']) && $is_client) {
     $favoritesSql = "SELECT property_id FROM user_favorites WHERE user_id = ?";
     $favoritesStmt = $pdo->prepare($favoritesSql);
     $favoritesStmt->execute([$_SESSION['user_id']]);
@@ -321,15 +328,24 @@ if (isset($_SESSION['user_id'])) {
                                                 onclick="showPropertyDetails(<?= htmlspecialchars(json_encode($p)) ?>, <?= $isFavorited ? 'true' : 'false' ?>)">
                                             <i class="fas fa-eye me-1"></i>View Details
                                         </button>
-                                        <?php if (isset($_SESSION['user_id'])): ?>
+                                        
+                                        <?php if ($is_client && isset($_SESSION['user_id'])): ?>
                                             <a href="book_appointment.php?property_id=<?= $p['id'] ?>&agent_id=<?= $p['agent_id'] ?>"
                                                class="btn btn-primary">
                                                 <i class="fas fa-calendar-alt me-1"></i>Book Appointment
                                             </a>
-                                        <?php else: ?>
+                                        <?php elseif (!isset($_SESSION['user_id'])): ?>
                                             <a href="../auth/login.php" class="btn btn-primary">
                                                 <i class="fas fa-sign-in-alt me-1"></i>Login to Book
                                             </a>
+                                        <?php elseif ($is_agent): ?>
+                                            <button class="btn btn-secondary" disabled>
+                                                <i class="fas fa-user-tie me-1"></i>Agent View
+                                            </button>
+                                        <?php elseif ($is_admin): ?>
+                                            <button class="btn btn-secondary" disabled>
+                                                <i class="fas fa-user-shield me-1"></i>Admin View
+                                            </button>
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -360,9 +376,23 @@ if (isset($_SESSION['user_id'])) {
 
 
 <script>
-// Pass PHP data to JavaScript
+// Pass PHP data to JavaScript with explicit boolean values
 const userLoggedIn = <?= isset($_SESSION['user_id']) ? 'true' : 'false' ?>;
+const userRole = <?= json_encode($user_role) ?>;
+const isAgent = <?= $is_agent ? 'true' : 'false' ?>;
+const isClient = <?= $is_client ? 'true' : 'false' ?>;
+const isAdmin = <?= $is_admin ? 'true' : 'false' ?>;
 const userFavorites = <?= json_encode($userFavorites) ?>;
+
+// Output debug info to console
+console.log("User session data:", {
+    loggedIn: <?= isset($_SESSION['user_id']) ? 'true' : 'false' ?>,
+    userId: <?= isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'null' ?>,
+    role: <?= json_encode($user_role) ?>,
+    isAgent: <?= $is_agent ? 'true' : 'false' ?>,
+    isAdmin: <?= $is_admin ? 'true' : 'false' ?>,
+    isClient: <?= $is_client ? 'true' : 'false' ?>
+});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/js/explore.js"></script>

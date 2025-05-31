@@ -8,6 +8,9 @@ if (!isLoggedIn() || $_SESSION['role'] !== 'admin') {
     redirect('../auth/login.php');
 }
 
+// Get admin information
+$admin_data = getCurrentUser();
+
 $database = Database::getInstance();
 $pdo = $database->getConnection();
 
@@ -169,7 +172,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Appointments - Admin Panel</title>
+    <title>Manage Appointments - Omnes Real Estate</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
@@ -370,76 +373,9 @@ try {
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <nav class="navbar navbar-expand-lg admin-header">
-        <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center ms-3" href="../pages/home.php">
-                <img src="../assets/images/logo1.png" alt="Logo" width="120" height="50" class="me-3">
-            </a>
-            
-            <button class="navbar-toggler me-3" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">
-                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_clients.php">
-                            <i class="fas fa-users me-1"></i>Clients
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_agents.php">
-                            <i class="fas fa-user-tie me-1"></i>Agents
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_properties.php">
-                            <i class="fas fa-home me-1"></i>Properties
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="manage_appointments.php">
-                            <i class="fas fa-calendar-alt me-1"></i>Appointments
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="events.php">
-                            <i class="fas fa-calendar-star me-1"></i>Events
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="reports.php">
-                            <i class="fas fa-chart-bar me-1"></i>Reports
-                        </a>
-                    </li>
-                </ul>
-                
-                <div class="d-flex align-items-center me-3">
-                    <div class="dropdown">
-                        <a href="#" class="user-profile dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                            <div class="user-avatar">AC</div>
-                            <div class="user-info">
-                                <div class="user-name">Administrator</div>
-                                <div class="user-role">Admin</div>
-                            </div>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item text-danger" href="../auth/logout.php">
-                                <i class="fas fa-sign-out-alt me-2"></i>Logout
-                            </a></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </nav>
-
+    <!-- Include shared admin header -->
+    <?php include '../includes/admin_header.php'; ?>
+    
     <div class="container mt-4">
         <div class="row">
             <!-- Sidebar -->
@@ -469,17 +405,14 @@ try {
                         <a href="manage_appointments.php" class="nav-link-admin active">
                             <i class="fas fa-calendar-alt me-3"></i>Appointments
                         </a>
-                        <a href="events.php" class="nav-link-admin">
-                            <i class="fas fa-calendar-star me-3"></i>Events
-                        </a>
-                        <a href="reports.php" class="nav-link-admin">
-                            <i class="fas fa-chart-bar me-3"></i>Reports
+                        <a href="analytics.php" class="nav-link-admin">
+                            <i class="fas fa-chart-bar me-3"></i>Analytics & Reports
                         </a>
                     </nav>
                 </div>
             </div>
-
-            <!-- Main Content -->
+            
+            <!-- Main content -->
             <div class="col-lg-9">
                 <!-- Page Header -->
                 <div class="content-card mb-4">

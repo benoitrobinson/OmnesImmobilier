@@ -21,37 +21,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $form_action = $_POST['action'] ?? '';
     
     if ($form_action === 'add_property' || $form_action === 'edit_property') {
-        // Property data
+        // Property data - match actual database columns
         $title = trim($_POST['title'] ?? '');
         $description = trim($_POST['description'] ?? '');
         $price = (float)($_POST['price'] ?? 0);
         $property_type = $_POST['property_type'] ?? '';
-        $listing_type = $_POST['listing_type'] ?? 'sale';
         
-        // Address
+        // Address - actual columns
         $address_line1 = trim($_POST['address_line1'] ?? '');
-        $address_line2 = trim($_POST['address_line2'] ?? '');
         $city = trim($_POST['city'] ?? '');
         $state = trim($_POST['state'] ?? '');
         $postal_code = trim($_POST['postal_code'] ?? '');
         $country = trim($_POST['country'] ?? 'France');
         
-        // Property details
+        // Property details - actual columns
         $bedrooms = (int)($_POST['bedrooms'] ?? 0);
         $bathrooms = (int)($_POST['bathrooms'] ?? 0);
-        $total_rooms = (int)($_POST['total_rooms'] ?? 0);
-        $living_area = (float)($_POST['living_area'] ?? 0);
-        $lot_size = (float)($_POST['lot_size'] ?? 0);
+        $living_area = (int)($_POST['living_area'] ?? 0);
         $year_built = (int)($_POST['year_built'] ?? 0);
         
-        // Features
+        // Features - actual columns only
         $has_parking = isset($_POST['has_parking']) ? 1 : 0;
         $parking_spaces = (int)($_POST['parking_spaces'] ?? 0);
-        $has_balcony = isset($_POST['has_balcony']) ? 1 : 0;
-        $has_terrace = isset($_POST['has_terrace']) ? 1 : 0;
         $has_garden = isset($_POST['has_garden']) ? 1 : 0;
-        $heating_type = $_POST['heating_type'] ?? '';
-        $energy_rating = $_POST['energy_rating'] ?? '';
         
         // Validation
         if (empty($title)) {
@@ -70,30 +62,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             try {
                 if ($form_action === 'add_property') {
                     $query = "INSERT INTO properties (
-                                agent_id, title, description, price, property_type, listing_type,
-                                address_line1, address_line2, city, state, postal_code, country,
-                                bedrooms, bathrooms, total_rooms, living_area, lot_size, year_built,
-                                has_parking, parking_spaces, has_balcony, has_terrace, has_garden,
-                                heating_type, energy_rating, status, created_at
+                                agent_id, title, description, price, property_type,
+                                address_line1, city, state, postal_code, country,
+                                bedrooms, bathrooms, living_area, year_built,
+                                has_parking, parking_spaces, has_garden, status, created_at
                               ) VALUES (
-                                :agent_id, :title, :description, :price, :property_type, :listing_type,
-                                :address_line1, :address_line2, :city, :state, :postal_code, :country,
-                                :bedrooms, :bathrooms, :total_rooms, :living_area, :lot_size, :year_built,
-                                :has_parking, :parking_spaces, :has_balcony, :has_terrace, :has_garden,
-                                :heating_type, :energy_rating, 'available', NOW()
+                                :agent_id, :title, :description, :price, :property_type,
+                                :address_line1, :city, :state, :postal_code, :country,
+                                :bedrooms, :bathrooms, :living_area, :year_built,
+                                :has_parking, :parking_spaces, :has_garden, 'available', NOW()
                               )";
                     $message = 'Property added successfully!';
                 } else {
                     $query = "UPDATE properties SET
                                 title = :title, description = :description, price = :price, 
-                                property_type = :property_type, listing_type = :listing_type,
-                                address_line1 = :address_line1, address_line2 = :address_line2, 
-                                city = :city, state = :state, postal_code = :postal_code, country = :country,
-                                bedrooms = :bedrooms, bathrooms = :bathrooms, total_rooms = :total_rooms,
-                                living_area = :living_area, lot_size = :lot_size, year_built = :year_built,
-                                has_parking = :has_parking, parking_spaces = :parking_spaces,
-                                has_balcony = :has_balcony, has_terrace = :has_terrace, has_garden = :has_garden,
-                                heating_type = :heating_type, energy_rating = :energy_rating,
+                                property_type = :property_type,
+                                address_line1 = :address_line1, city = :city, state = :state, 
+                                postal_code = :postal_code, country = :country,
+                                bedrooms = :bedrooms, bathrooms = :bathrooms, living_area = :living_area,
+                                year_built = :year_built, has_parking = :has_parking, 
+                                parking_spaces = :parking_spaces, has_garden = :has_garden,
                                 updated_at = NOW()
                               WHERE id = :property_id AND agent_id = :agent_id";
                     $message = 'Property updated successfully!';
@@ -106,26 +94,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     'description' => $description,
                     'price' => $price,
                     'property_type' => $property_type,
-                    'listing_type' => $listing_type,
                     'address_line1' => $address_line1,
-                    'address_line2' => $address_line2,
                     'city' => $city,
                     'state' => $state,
                     'postal_code' => $postal_code,
                     'country' => $country,
                     'bedrooms' => $bedrooms,
                     'bathrooms' => $bathrooms,
-                    'total_rooms' => $total_rooms,
                     'living_area' => $living_area,
-                    'lot_size' => $lot_size,
                     'year_built' => $year_built,
                     'has_parking' => $has_parking,
                     'parking_spaces' => $parking_spaces,
-                    'has_balcony' => $has_balcony,
-                    'has_terrace' => $has_terrace,
-                    'has_garden' => $has_garden,
-                    'heating_type' => $heating_type,
-                    'energy_rating' => $energy_rating
+                    'has_garden' => $has_garden
                 ];
                 
                 if ($form_action === 'edit_property') {
@@ -586,7 +566,13 @@ if (isset($_GET['debug'])) {
                         <div class="col-lg-4 col-md-6 mb-4">
                             <div class="property-card">
                                 <div class="property-image">
-                                    <?= $prop['property_type'] === 'apartment' ? '🏠' : ($prop['property_type'] === 'commercial' ? '🏢' : '🏘️') ?>
+                                    <img src="../assets/images/property<?= $prop['id'] ?>-2.jpg" 
+                                         alt="<?= htmlspecialchars($prop['title']) ?>"
+                                         style="width: 100%; height: 100%; object-fit: cover;"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                    <div style="display: none; width: 100%; height: 100%; align-items: center; justify-content: center; font-size: 3rem; color: #6c757d; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+                                        <?= $prop['property_type'] === 'apartment' ? '🏠' : ($prop['property_type'] === 'commercial' ? '🏢' : '🏘️') ?>
+                                    </div>
                                     <div class="property-status status-<?= $prop['status'] ?>">
                                         <?= ucfirst($prop['status']) ?>
                                     </div>
@@ -715,7 +701,7 @@ if (isset($_GET['debug'])) {
                                             <select class="form-control form-control-custom" name="property_type" required>
                                                 <option value="">Select Type</option>
                                                 <?php 
-                                                $types = ['house' => 'House', 'apartment' => 'Apartment', 'land' => 'Land', 'commercial' => 'Commercial', 'rental' => 'Rental'];
+                                                $types = ['house' => 'House', 'apartment' => 'Apartment', 'land' => 'Land', 'commercial' => 'Commercial', 'rental' => 'Rental', 'auction' => 'Auction'];
                                                 foreach ($types as $value => $label): 
                                                 ?>
                                                     <option value="<?= $value ?>" <?= ($property['property_type'] ?? '') === $value ? 'selected' : '' ?>>
@@ -725,30 +711,14 @@ if (isset($_GET['debug'])) {
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">Listing Type</label>
-                                            <select class="form-control form-control-custom" name="listing_type">
-                                                <option value="sale" <?= ($property['listing_type'] ?? 'sale') === 'sale' ? 'selected' : '' ?>>For Sale</option>
-                                                <option value="rent" <?= ($property['listing_type'] ?? '') === 'rent' ? 'selected' : '' ?>>For Rent</option>
-                                                <option value="auction" <?= ($property['listing_type'] ?? '') === 'auction' ? 'selected' : '' ?>>Auction</option>
-                                            </select>
-                                        </div>
-                                    </div>
                                 </div>
                                 
                                 <h5 class="mb-3 mt-4">Address</h5>
                                 
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold">Address Line 1 *</label>
+                                    <label class="form-label fw-semibold">Address *</label>
                                     <input type="text" class="form-control form-control-custom" name="address_line1" 
                                            value="<?= htmlspecialchars($property['address_line1'] ?? '') ?>" required>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold">Address Line 2</label>
-                                    <input type="text" class="form-control form-control-custom" name="address_line2" 
-                                           value="<?= htmlspecialchars($property['address_line2'] ?? '') ?>">
                                 </div>
                                 
                                 <div class="row">
@@ -775,6 +745,16 @@ if (isset($_GET['debug'])) {
                                     </div>
                                 </div>
                                 
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">Country</label>
+                                            <input type="text" class="form-control form-control-custom" name="country" 
+                                                   value="<?= htmlspecialchars($property['country'] ?? 'France') ?>">
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 <h5 class="mb-3 mt-4">Property Details</h5>
                                 
                                 <div class="row">
@@ -794,9 +774,9 @@ if (isset($_GET['debug'])) {
                                     </div>
                                     <div class="col-md-3">
                                         <div class="mb-3">
-                                            <label class="form-label fw-semibold">Total Rooms</label>
-                                            <input type="number" class="form-control form-control-custom" name="total_rooms" 
-                                                   value="<?= $property['total_rooms'] ?? '' ?>" min="0">
+                                            <label class="form-label fw-semibold">Living Area (m²)</label>
+                                            <input type="number" class="form-control form-control-custom" name="living_area" 
+                                                   value="<?= $property['living_area'] ?? '' ?>" min="0">
                                         </div>
                                     </div>
                                     <div class="col-md-3">
@@ -804,23 +784,6 @@ if (isset($_GET['debug'])) {
                                             <label class="form-label fw-semibold">Year Built</label>
                                             <input type="number" class="form-control form-control-custom" name="year_built" 
                                                    value="<?= $property['year_built'] ?? '' ?>" min="1800" max="<?= date('Y') + 5 ?>">
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">Living Area (m²)</label>
-                                            <input type="number" step="0.01" class="form-control form-control-custom" name="living_area" 
-                                                   value="<?= $property['living_area'] ?? '' ?>" min="0">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label class="form-label fw-semibold">Lot Size (m²)</label>
-                                            <input type="number" step="0.01" class="form-control form-control-custom" name="lot_size" 
-                                                   value="<?= $property['lot_size'] ?? '' ?>" min="0">
                                         </div>
                                     </div>
                                 </div>
@@ -836,23 +799,7 @@ if (isset($_GET['debug'])) {
                                         <label class="form-check-label">Has Parking</label>
                                     </div>
                                     <input type="number" class="form-control form-control-custom mt-2" name="parking_spaces" 
-                                           placeholder="Number of parking spaces" value="<?= $property['parking_spaces'] ?? '' ?>">
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" name="has_balcony" 
-                                               <?= !empty($property['has_balcony']) ? 'checked' : '' ?>>
-                                        <label class="form-check-label">Has Balcony</label>
-                                    </div>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" name="has_terrace" 
-                                               <?= !empty($property['has_terrace']) ? 'checked' : '' ?>>
-                                        <label class="form-check-label">Has Terrace</label>
-                                    </div>
+                                           placeholder="Number of parking spaces" value="<?= $property['parking_spaces'] ?? '' ?>" min="0">
                                 </div>
                                 
                                 <div class="mb-3">
@@ -863,31 +810,11 @@ if (isset($_GET['debug'])) {
                                     </div>
                                 </div>
                                 
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold">Heating Type</label>
-                                    <select class="form-control form-control-custom" name="heating_type">
-                                        <option value="">Select Heating</option>
-                                        <?php 
-                                        $heating_types = ['gas' => 'Gas', 'electric' => 'Electric', 'oil' => 'Oil', 'solar' => 'Solar', 'geothermal' => 'Geothermal'];
-                                        foreach ($heating_types as $value => $label): 
-                                        ?>
-                                            <option value="<?= $value ?>" <?= ($property['heating_type'] ?? '') === $value ? 'selected' : '' ?>>
-                                                <?= $label ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                                
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold">Energy Rating</label>
-                                    <select class="form-control form-control-custom" name="energy_rating">
-                                        <option value="">Select Rating</option>
-                                        <?php foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G'] as $rating): ?>
-                                            <option value="<?= $rating ?>" <?= ($property['energy_rating'] ?? '') === $rating ? 'selected' : '' ?>>
-                                                <?= $rating ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                <div class="alert alert-info mt-4">
+                                    <small>
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        Additional features can be described in the property description above.
+                                    </small>
                                 </div>
                             </div>
                         </div>

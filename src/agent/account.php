@@ -14,11 +14,9 @@ $db = $database->getConnection();
 $error = '';
 $success = '';
 
-// Get complete agent information (removed specializations from query)
-$query = "SELECT u.*, a.cv_file_path, a.profile_picture_path, a.agency_name, a.agency_address,
-                 a.agency_phone, a.agency_email, a.license_number, 
-                 a.languages_spoken, a.years_experience, a.commission_rate, a.bio,
-                 a.average_rating, a.total_sales, a.total_transactions
+// Get complete agent information - match actual database columns
+$query = "SELECT u.*, a.cv_file_path, a.profile_picture_path, a.agency_name, 
+                 a.agency_email, a.years_experience, a.average_rating, a.total_sales, a.total_transactions
           FROM users u 
           INNER JOIN agents a ON u.id = a.user_id 
           WHERE u.id = :user_id";
@@ -38,24 +36,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $phone = trim($_POST['phone'] ?? '');
         $new_email = trim($_POST['email'] ?? '');
         
-        // Agent-specific information (removed specializations)
-        $bio = trim($_POST['bio'] ?? '');
-        $years_experience = (int)($_POST['years_experience'] ?? 0);
-        $license_number = trim($_POST['license_number'] ?? '');
-        $languages_spoken = $_POST['languages_spoken'] ?? [];
-        
-        // Agency information
+        // Agent-specific information (only fields that exist)
         $agency_name = trim($_POST['agency_name'] ?? '');
-        $agency_address = trim($_POST['agency_address'] ?? '');
-        $agency_phone = trim($_POST['agency_phone'] ?? '');
         $agency_email = trim($_POST['agency_email'] ?? '');
+        $years_experience = (int)($_POST['years_experience'] ?? 0);
         
         // Validation
         if (empty($first_name) || empty($last_name)) {
             $error = 'First name and last name are required.';
         } elseif (!filter_var($new_email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid email address.';
-        } elseif (!filter_var($agency_email, FILTER_VALIDATE_EMAIL)) {
+        } elseif (!empty($agency_email) && !filter_var($agency_email, FILTER_VALIDATE_EMAIL)) {
             $error = 'Please enter a valid agency email address.';
         } else {
             // Check if email is already taken
@@ -68,6 +59,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 if ($email_stmt->rowCount() > 0) {
                     $error = 'This email address is already in use.';
+                }
+            }
+            
+            // Check if agency email is already taken
+            if (!empty($agency_email) && $agency_email !== $agent['agency_email']) {
+                $agency_email_check = "SELECT user_id FROM agents WHERE agency_email = :agency_email AND user_id != :user_id";
+                $agency_email_stmt = $db->prepare($agency_email_check);
+                $agency_email_stmt->bindParam(':agency_email', $agency_email);
+                $agency_email_stmt->bindParam(':user_id', $_SESSION['user_id']);
+                $agency_email_stmt->execute();
+                
+                if ($agency_email_stmt->rowCount() > 0) {
+                    $error = 'This agency email address is already in use.';
                 }
             }
             
@@ -92,27 +96,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $update_user_stmt->bindParam(':user_id', $_SESSION['user_id']);
                     $update_user_stmt->execute();
                     
-                    // Update agents table (removed specializations)
+                    // Update agents table (only existing columns)
                     $update_agent_query = "UPDATE agents SET 
-                                          bio = :bio,
-                                          years_experience = :years_experience,
-                                          license_number = :license_number,
-                                          languages_spoken = :languages_spoken,
                                           agency_name = :agency_name,
-                                          agency_address = :agency_address,
-                                          agency_phone = :agency_phone,
-                                          agency_email = :agency_email
+                                          agency_email = :agency_email,
+                                          years_experience = :years_experience
                                           WHERE user_id = :user_id";
                     
                     $update_agent_stmt = $db->prepare($update_agent_query);
-                    $update_agent_stmt->bindParam(':bio', $bio);
-                    $update_agent_stmt->bindParam(':years_experience', $years_experience);
-                    $update_agent_stmt->bindParam(':license_number', $license_number);
-                    $update_agent_stmt->bindParam(':languages_spoken', json_encode($languages_spoken));
                     $update_agent_stmt->bindParam(':agency_name', $agency_name);
-                    $update_agent_stmt->bindParam(':agency_address', $agency_address);
-                    $update_agent_stmt->bindParam(':agency_phone', $agency_phone);
                     $update_agent_stmt->bindParam(':agency_email', $agency_email);
+                    $update_agent_stmt->bindParam(':years_experience', $years_experience);
                     $update_agent_stmt->bindParam(':user_id', $_SESSION['user_id']);
                     $update_agent_stmt->execute();
                     
@@ -171,19 +165,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Parse JSON fields (removed specializations)
-$languages_spoken = !empty($agent['languages_spoken']) ? json_decode($agent['languages_spoken'], true) : [];
+// Parse JSON fields (only existing fields)
+$specializations = !empty($agent['specializations']) ? json_decode($agent['specializations'], true) : [];
 
-// Available options (removed specializations)
-$available_languages = [
-    'french' => 'French',
-    'english' => 'English',
-    'spanish' => 'Spanish',
-    'italian' => 'Italian',
-    'german' => 'German',
-    'arabic' => 'Arabic',
-    'chinese' => 'Chinese',
-    'portuguese' => 'Portuguese'
+// Available options (based on actual database)
+$available_specializations = [
+    'residential_sales' => 'Residential Sales',
+    'commercial_sales' => 'Commercial Sales',
+    'rentals' => 'Rentals',
+    'luxury_properties' => 'Luxury Properties',
+    'investment_properties' => 'Investment Properties',
+    'new_construction' => 'New Construction',
+    'land_sales' => 'Land Sales',
+    'property_management' => 'Property Management'
 ];
 ?>
 
@@ -484,21 +478,10 @@ $available_languages = [
                                        value="<?= htmlspecialchars($agent['email'] ?? '') ?>" required>
                             </div>
                             
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group-custom">
-                                        <label class="form-label-custom" for="phone">Phone Number</label>
-                                        <input type="tel" class="form-control-custom" id="phone" name="phone" 
-                                               value="<?= htmlspecialchars($agent['phone'] ?? '') ?>">
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-group-custom">
-                                        <label class="form-label-custom" for="license_number">License Number</label>
-                                        <input type="text" class="form-control-custom" id="license_number" name="license_number" 
-                                               value="<?= htmlspecialchars($agent['license_number'] ?? '') ?>">
-                                    </div>
-                                </div>
+                            <div class="form-group-custom">
+                                <label class="form-label-custom" for="phone">Phone Number</label>
+                                <input type="tel" class="form-control-custom" id="phone" name="phone" 
+                                       value="<?= htmlspecialchars($agent['phone'] ?? '') ?>">
                             </div>
                             
                             <div class="form-group-custom">
@@ -507,55 +490,18 @@ $available_languages = [
                                        value="<?= htmlspecialchars($agent['years_experience'] ?? '0') ?>" min="0" max="50">
                             </div>
                             
-                            <div class="form-group-custom">
-                                <label class="form-label-custom" for="bio">Professional Bio</label>
-                                <textarea class="form-control-custom" id="bio" name="bio" rows="4" 
-                                          placeholder="Tell clients about your experience and expertise..."><?= htmlspecialchars($agent['bio'] ?? '') ?></textarea>
-                            </div>
-                            
-                            <!-- Languages -->
-                            <div class="form-group-custom">
-                                <label class="form-label-custom">Languages Spoken</label>
-                                <div class="language-grid">
-                                    <?php foreach ($available_languages as $key => $label): ?>
-                                        <div class="language-item">
-                                            <input type="checkbox" class="form-check-input me-2" 
-                                                   id="lang_<?= $key ?>" name="languages_spoken[]" value="<?= $key ?>"
-                                                   <?= in_array($key, $languages_spoken) ? 'checked' : '' ?>>
-                                            <label class="form-check-label" for="lang_<?= $key ?>"><?= $label ?></label>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                            
                             <h5 class="mt-4 mb-3">Agency Information</h5>
                             
                             <div class="form-group-custom">
                                 <label class="form-label-custom" for="agency_name">Agency Name *</label>
                                 <input type="text" class="form-control-custom" id="agency_name" name="agency_name" 
-                                       value="<?= htmlspecialchars($agent['agency_name'] ?? '') ?>" required>
+                                       value="<?= htmlspecialchars($agent['agency_name'] ?? 'Independent Agent') ?>" required>
                             </div>
                             
                             <div class="form-group-custom">
-                                <label class="form-label-custom" for="agency_address">Agency Address</label>
-                                <textarea class="form-control-custom" id="agency_address" name="agency_address" rows="2"><?= htmlspecialchars($agent['agency_address'] ?? '') ?></textarea>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="form-group-custom">
-                                        <label class="form-label-custom" for="agency_phone">Agency Phone</label>
-                                        <input type="tel" class="form-control-custom" id="agency_phone" name="agency_phone" 
-                                               value="<?= htmlspecialchars($agent['agency_phone'] ?? '') ?>">
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-group-custom">
-                                        <label class="form-label-custom" for="agency_email">Agency Email</label>
-                                        <input type="email" class="form-control-custom" id="agency_email" name="agency_email" 
-                                               value="<?= htmlspecialchars($agent['agency_email'] ?? '') ?>">
-                                    </div>
-                                </div>
+                                <label class="form-label-custom" for="agency_email">Agency Email</label>
+                                <input type="email" class="form-control-custom" id="agency_email" name="agency_email" 
+                                       value="<?= htmlspecialchars($agent['agency_email'] ?? '') ?>">
                             </div>
                             
                             <button type="submit" class="btn-agent-primary">
@@ -612,11 +558,11 @@ $available_languages = [
                             <a href="manage_properties.php" class="btn btn-outline-success">
                                 <i class="fas fa-home me-2"></i>Manage Properties
                             </a>
-                            <a href="manage_appointments.php" class="btn btn-outline-warning">
+                            <a href="../pages/appointments.php" class="btn btn-outline-warning">
                                 <i class="fas fa-calendar-alt me-2"></i>View Appointments
                             </a>
-                            <a href="messages.php" class="btn btn-outline-info">
-                                <i class="fas fa-envelope me-2"></i>Messages
+                            <a href="../pages/explore.php" class="btn btn-outline-info">
+                                <i class="fas fa-search me-2"></i>Explore Properties
                             </a>
                         </div>
                     </div>
@@ -634,10 +580,7 @@ $available_languages = [
                             </div>
                             <h5><?= htmlspecialchars(($agent['first_name'] ?? '') . ' ' . ($agent['last_name'] ?? '')) ?></h5>
                             <p class="text-muted">Licensed Real Estate Agent</p>
-                            
-                            <?php if ($agent['license_number']): ?>
-                                <p class="small text-muted">License: <?= htmlspecialchars($agent['license_number']) ?></p>
-                            <?php endif; ?>
+                            <p class="text-muted small"><?= htmlspecialchars($agent['agency_name'] ?? 'Independent Agent') ?></p>
                         </div>
                         
                         <div class="text-center">

@@ -15,7 +15,20 @@ function changeImage(button, direction) {
 }
 
 // Toggle favorite function
-function toggleFavorite(button, propertyId) {
+function toggleFavorite(button) {
+    // Check if user is an agent or admin - disable functionality
+    if ((typeof isAgent !== 'undefined' && isAgent) || (typeof isAdmin !== 'undefined' && isAdmin)) {
+        showNotification('Favorites are not available for agent or admin accounts.', 'error');
+        return;
+    }
+    
+    // Check if user is logged in and is a client
+    if (!userLoggedIn || (typeof isClient !== 'undefined' && !isClient)) {
+        showNotification('Please log in as a client to use favorites.', 'error');
+        return;
+    }
+    
+    const propertyId = button.dataset.propertyId;
     const isCurrentlyFavorited = button.classList.contains('favorited');
     const action = isCurrentlyFavorited ? 'remove' : 'add';
     
@@ -33,12 +46,12 @@ function toggleFavorite(button, propertyId) {
     .then(data => {
         if (data.success) {
             if (data.action === 'added') {
-                button.classList.remove('btn-outline-success');
+                button.classList.remove('btn-outline-danger');
                 button.classList.add('btn-danger', 'favorited');
                 button.innerHTML = '<i class="fas fa-heart me-1"></i>Remove from Favorites';
             } else {
                 button.classList.remove('btn-danger', 'favorited');
-                button.classList.add('btn-outline-success');
+                button.classList.add('btn-outline-danger');
                 button.innerHTML = '<i class="fas fa-heart me-1"></i>Add to Favorites';
             }
             
@@ -79,115 +92,119 @@ function showNotification(message, type) {
 }
 
 // Show property details in modal
-function showPropertyDetails(property, isFavorited = false) {
-    document.getElementById('propertyModalTitle').textContent = property.title;
-    
-    // Get images
-    let images = [];
-    if (property.images) {
-        try {
-            images = JSON.parse(property.images);
-        } catch(e) {
-            images = [`../assets/images/property${property.id}-1.jpg`];
-        }
-    } else {
-        images = [`../assets/images/property${property.id}-1.jpg`];
-    }
-    
-    // Check if user is logged in
-    const isLoggedIn = typeof userLoggedIn !== 'undefined' && userLoggedIn;
-    
+function showPropertyDetails(property, isFavorited) {
+    const modalTitle = document.getElementById('propertyModalTitle');
     const modalBody = document.getElementById('propertyModalBody');
     
-    // First, display the modal with basic info
+    modalTitle.textContent = property.title;
+    
+    const images = property.images ? JSON.parse(property.images) : [
+        `../assets/images/property${property.id}-1.jpg`,
+        `../assets/images/property${property.id}-2.jpg`,
+        `../assets/images/property${property.id}-3.jpg`
+    ];
+
+    const actionsHTML = () => {
+        if ((typeof isAgent !== 'undefined' && isAgent === true) || 
+            (typeof isAdmin !== 'undefined' && isAdmin === true)) {
+            // Agent or Admin view - no booking or favorites
+            const roleText = isAdmin ? 'administrator' : 'agent';
+            return `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    You are viewing this property as an ${roleText}. Booking and favorites are not available for ${roleText} accounts.
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-secondary" disabled>
+                        <i class="fas fa-user-${isAdmin ? 'shield' : 'tie'} me-1"></i>${isAdmin ? 'Admin' : 'Agent'} View Only
+                    </button>
+                </div>
+            `;
+        } else if (userLoggedIn && typeof isClient !== 'undefined' && isClient === true) {
+            // Client view - restore original styling
+            return `
+                <div class="d-grid gap-2">
+                    <a href="book_appointment.php?property_id=${property.id}&agent_id=${property.agent_id}" 
+                       class="btn btn-primary">
+                        <i class="fas fa-calendar-alt me-1"></i>Book Appointment
+                    </a>
+                    <button class="btn btn-outline-danger favorite-btn ${isFavorited ? 'favorited' : ''}" 
+                            data-property-id="${property.id}">
+                        <i class="fas fa-heart me-1"></i>
+                        ${isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                    </button>
+                </div>
+            `;
+        } else {
+            // Not logged in - no favorites
+            return `
+                <div class="d-grid gap-2">
+                    <a href="../auth/login.php" class="btn btn-primary">
+                        <i class="fas fa-sign-in-alt me-1"></i>Login to Book Appointment
+                    </a>
+                </div>
+            `;
+        }
+    };
+    
+    // Display debugging info to console about user role
+    console.log("User role debug:", { 
+        isLoggedIn: userLoggedIn, 
+        userRole: typeof userRole !== 'undefined' ? userRole : 'unknown',
+        isAgent: typeof isAgent !== 'undefined' ? isAgent : 'unknown',
+        isAdmin: typeof isAdmin !== 'undefined' ? isAdmin : 'unknown',
+        isClient: typeof isClient !== 'undefined' ? isClient : 'unknown'
+    });
+
     modalBody.innerHTML = `
         <div class="row">
             <div class="col-md-6">
-                <div class="property-image-container mb-3" style="height: 250px;" data-images='${JSON.stringify(images)}' data-current="0">
-                    <img src="${images[0]}" class="property-main-img" style="border-radius: 8px;" onerror="this.src='../assets/images/placeholder.jpg'">
+                <div id="propertyCarousel" class="carousel slide" data-bs-ride="carousel">
+                    <div class="carousel-inner">
+                        ${images.map((img, index) => `
+                            <div class="carousel-item ${index === 0 ? 'active' : ''}">
+                                <img src="${img}" class="d-block w-100" alt="Property Image" 
+                                     style="height: 300px; object-fit: cover;"
+                                     onerror="this.src='../assets/images/placeholder.jpg'">
+                            </div>
+                        `).join('')}
+                    </div>
                     ${images.length > 1 ? `
-                        <button class="property-arrow left-arrow" onclick="changeImage(this, -1)">&#8592;</button>
-                        <button class="property-arrow right-arrow" onclick="changeImage(this, 1)">&#8594;</button>
+                        <button class="carousel-control-prev" type="button" data-bs-target="#propertyCarousel" data-bs-slide="prev">
+                            <span class="carousel-control-prev-icon"></span>
+                        </button>
+                        <button class="carousel-control-next" type="button" data-bs-target="#propertyCarousel" data-bs-slide="next">
+                            <span class="carousel-control-next-icon"></span>
+                        </button>
                     ` : ''}
                 </div>
             </div>
             <div class="col-md-6">
-                <h6><i class="fas fa-map-marker-alt me-2"></i>Location</h6>
-                <p>${property.address_line1}, ${property.city}</p>
-                
-                <h6><i class="fas fa-info-circle me-2"></i>Property Type</h6>
-                <p class="text-capitalize">${property.property_type}</p>
-                
-                <h6><i class="fas fa-euro-sign me-2"></i>Price</h6>
-                <p class="h4 text-primary">€${new Intl.NumberFormat().format(property.price)}</p>
-                
-                <h6><i class="fas fa-calendar me-2"></i>Listed</h6>
-                <p>${new Date(property.created_at).toLocaleDateString()}</p>
+                <h4 class="text-primary">€${parseInt(property.price).toLocaleString()}</h4>
+                <p><strong>Type:</strong> ${property.property_type.charAt(0).toUpperCase() + property.property_type.slice(1)}</p>
+                <p><strong>Location:</strong> ${property.city}</p>
+                <p><strong>Address:</strong> ${property.address_line1}</p>
+                ${property.bedrooms ? `<p><strong>Bedrooms:</strong> ${property.bedrooms}</p>` : ''}
+                ${property.living_area ? `<p><strong>Living Area:</strong> ${property.living_area} m²</p>` : ''}
+                <p><strong>Description:</strong> ${property.description}</p>
             </div>
         </div>
-        <hr>
-        <h6><i class="fas fa-file-alt me-2"></i>Description</h6>
-        <p>${property.description}</p>
         
-        <!-- Referent agent section with loading state -->
-        <div class="referent-agent-line mb-3 p-2 bg-light rounded" id="agentInfo">
-            <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
-            <strong>Referent Agent:</strong> 
-            <span class="ms-1">Loading...</span>
-        </div>
-        
-        <div class="d-grid">
-            ${isLoggedIn ? `
-                <button type="button" 
-                        class="btn favorite-btn ${isFavorited ? 'btn-danger favorited' : 'btn-outline-success'}"
-                        onclick="toggleFavorite(this, ${property.id})">
-                    <i class="fas fa-heart me-1"></i>${isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
-                </button>
-            ` : `
-                <a href="../auth/login.php" class="btn btn-primary">
-                    <i class="fas fa-sign-in-alt me-1"></i>Login to Add Favorites
-                </a>
-            `}
+        <div class="row mt-4">
+            <div class="col-12">
+                ${actionsHTML()}
+            </div>
         </div>
     `;
-    
-    // Fetch agent name if agent_id exists
-    if (property.agent_id) {
-        fetch(`../ajax/get_agent.php?agent_id=${property.agent_id}`)
-            .then(response => response.json())
-            .then(data => {
-                const agentInfoElement = document.getElementById('agentInfo');
-                if (data.success && data.agent) {
-                    agentInfoElement.innerHTML = `
-                        <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
-                        <strong>Referent Agent:</strong> 
-                        <span class="ms-1">${data.agent.first_name} ${data.agent.last_name}</span>
-                    `;
-                } else {
-                    agentInfoElement.innerHTML = `
-                        <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
-                        <strong>Referent Agent:</strong> 
-                        <span class="ms-1">Not assigned</span>
-                    `;
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching agent:', error);
-                const agentInfoElement = document.getElementById('agentInfo');
-                agentInfoElement.innerHTML = `
-                    <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
-                    <strong>Referent Agent:</strong> 
-                    <span class="ms-1">Error loading agent info</span>
-                `;
+
+    // Add event listener for favorite button (only for clients)
+    if (typeof isClient !== 'undefined' && isClient && userLoggedIn) {
+        const favoriteBtn = modalBody.querySelector('.favorite-btn');
+        if (favoriteBtn) {
+            favoriteBtn.addEventListener('click', function() {
+                toggleFavorite(this);
             });
-    } else {
-        // No agent assigned
-        const agentInfoElement = document.getElementById('agentInfo');
-        agentInfoElement.innerHTML = `
-            <i class="fas fa-user-tie me-2" style="color: #d4af37;"></i>
-            <strong>Referent Agent:</strong> 
-            <span class="ms-1">Not assigned</span>
-        `;
+        }
     }
 }
 

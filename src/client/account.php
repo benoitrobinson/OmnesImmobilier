@@ -1133,12 +1133,12 @@ try {
             <div class="container">
                 <div class="row align-items-center">
                     <div class="col-md-8">
-                        <h1><i class="fas fa-user-cog me-3"></i>Account Settings</h1>
+                        <h1><i class="fas fa-user-cog me-3"></i>Your Account Settings</h1>
                         <p class="mb-0">Manage your profile, preferences, and security settings</p>
                     </div>
                     <div class="col-md-4 text-end">
                         <a href="dashboard.php" class="btn btn-light">
-                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                            <i class="fas fa-chart-pie me-2"></i>Return to Dashboard
                         </a>
                     </div>
                 </div>

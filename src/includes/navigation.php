@@ -1,4 +1,44 @@
 <?php
+// Make sure we have the required functions and database connection
+if (!function_exists('isLoggedIn')) {
+    require_once __DIR__ . '/../includes/functions.php';
+}
+
+// Ensure we have a proper database connection
+if (!isset($pdo) || $pdo === null) {
+    require_once __DIR__ . '/../config/database.php';
+}
+
+$user_id = $_SESSION['user_id'] ?? null;
+$user_role = $_SESSION['role'] ?? null;
+
+// Get user notifications count if logged in (only if database is available)
+$notification_count = 0;
+if ($user_id && $user_role && isset($pdo) && $pdo !== null) {
+    try {
+        if ($user_role === 'client') {
+            // Count unread messages for clients
+            $notification_query = "SELECT COUNT(*) as count FROM messages WHERE recipient_id = ? AND is_read = 0";
+            $notification_stmt = $pdo->prepare($notification_query);
+            $notification_stmt->execute([$user_id]);
+            $result = $notification_stmt->fetch(PDO::FETCH_ASSOC);
+            $notification_count = $result['count'] ?? 0;
+        } elseif ($user_role === 'agent') {
+            // Count pending appointments for agents
+            $notification_query = "SELECT COUNT(*) as count FROM appointments a 
+                                  INNER JOIN properties p ON a.property_id = p.id 
+                                  WHERE p.agent_id = ? AND a.status = 'scheduled'";
+            $notification_stmt = $pdo->prepare($notification_query);
+            $notification_stmt->execute([$user_id]);
+            $result = $notification_stmt->fetch(PDO::FETCH_ASSOC);
+            $notification_count = $result['count'] ?? 0;
+        }
+    } catch (Exception $e) {
+        error_log("Navigation notification error: " . $e->getMessage());
+        $notification_count = 0;
+    }
+}
+
 // Check if user is logged in
 $isLoggedIn = isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
 $userFirstName = $_SESSION['first_name'] ?? '';
@@ -53,28 +93,6 @@ if ($userRole === 'agent') {
                     </a>
                 </li>
                 
-                <?php if(!empty($_SESSION['role']) && $_SESSION['role'] === 'agent'): ?>
-                <li class="nav-item">
-                  <a class="nav-link" href="/agent/availability.php">Availability</a>
-                </li>
-                <?php
-                // count pending appointments
-                $count = 0;
-                if (!empty($_SESSION['user_id'])) {
-                    $stmt = $pdo->prepare(
-                        "SELECT COUNT(*) FROM appointments 
-                         WHERE agent_id = ? AND appointment_date >= NOW()"
-                    );
-                    $stmt->execute([ $_SESSION['user_id'] ]);
-                    $count = (int)$stmt->fetchColumn();
-                }
-                ?>
-                <li class="nav-item">
-                  <a class="nav-link" href="/agent/dashboard.php">
-                    Appointments <span class="badge bg-light text-dark"><?=$count?></span>
-                  </a>
-                </li>
-                <?php endif; ?>
             </ul>
             
             <!-- Right-aligned account dropdown -->

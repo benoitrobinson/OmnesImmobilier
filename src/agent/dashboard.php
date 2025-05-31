@@ -109,50 +109,56 @@ $breadcrumb_items = [
 // Your existing data fetching code for appointments, properties, etc.
 $upcoming_appointments = [];
 $agent_properties = [];
-// ... (keep your existing data fetching code)
 
-// Mock data fallbacks (your existing code)
-if (empty($upcoming_appointments)) {
-    $upcoming_appointments = [
-        [
-            'id' => 1,
-            'property_title' => 'Luxury Apartment - Champs-Élysées',
-            'client_name' => 'Alice Durand',
-            'client_phone' => '+33 7 12 34 56 78',
-            'client_email' => 'alice@omnes.fr',
-            'date_rdv' => '2025-05-28',
-            'heure_rdv' => '14:30:00',
-            'address' => '100 Avenue des Champs-Élysées, Paris',
-            'property_price' => 850000
-        ]
-    ];
+// Get real upcoming appointments for agent
+try {
+    $appointment_query = "SELECT 
+                            a.appointment_date,
+                            p.title AS property_title,
+                            p.address_line1,
+                            p.city,
+                            CONCAT(u.first_name, ' ', u.last_name) AS client_name,
+                            a.location,
+                            a.status
+                            FROM appointments a 
+                            JOIN properties p ON a.property_id = p.id 
+                            JOIN users u ON a.client_id = u.id 
+                            WHERE a.agent_id = :agent_id 
+                              AND a.appointment_date >= NOW() 
+                              AND a.status = 'scheduled'
+                            ORDER BY a.appointment_date ASC
+                            LIMIT 3";
+    $appointment_stmt = $pdo->prepare($appointment_query);
+    $appointment_stmt->execute(['agent_id' => $_SESSION['user_id']]);
+    $upcoming_appointments = $appointment_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Agent upcoming appointments error: " . $e->getMessage());
+    $upcoming_appointments = [];
 }
 
-if (empty($agent_properties)) {
-    $agent_properties = [
-        [
-            'id' => 1,
-            'title' => 'Luxury Apartment - Champs-Élysées',
-            'price' => 850000,
-            'bedrooms' => 3,
-            'living_area' => 120,
-            'property_type' => 'apartment',
-            'status' => 'available',
-            'address_line1' => '100 Avenue des Champs-Élysées',
-            'city' => 'Paris'
-        ],
-        [
-            'id' => 2,
-            'title' => 'Modern Office Space',
-            'price' => 1200000,
-            'bedrooms' => 0,
-            'living_area' => 300,
-            'property_type' => 'commercial',
-            'status' => 'available',
-            'address_line1' => '50 Avenue de la Grande Armée',
-            'city' => 'Paris'
-        ]
-    ];
+// Get real agent properties
+try {
+    $property_query = "SELECT 
+                         id,
+                         title,
+                         price,
+                         bedrooms,
+                         living_area,
+                         property_type,
+                         status,
+                         address_line1,
+                         city,
+                         created_at
+                       FROM properties 
+                       WHERE agent_id = :agent_id 
+                       ORDER BY created_at DESC
+                       LIMIT 5";
+    $property_stmt = $pdo->prepare($property_query);
+    $property_stmt->execute(['agent_id' => $_SESSION['user_id']]);
+    $agent_properties = $property_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Agent properties error: " . $e->getMessage());
+    $agent_properties = [];
 }
 ?>
 
@@ -454,43 +460,37 @@ if (empty($agent_properties)) {
                     </div>
                     <div class="content-card-body">
                         <?php if (!empty($upcoming_appointments)): ?>
-                            <?php foreach (array_slice($upcoming_appointments, 0, 3) as $appointment): ?>
-                                <div class="appointment-card-agent">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                            <?php foreach ($upcoming_appointments as $appointment): ?>
+                                <div class="d-flex align-items-center mb-3 p-3 bg-light rounded">
+                                    <div class="me-3">
+                                        <i class="fas fa-calendar-alt fa-2x text-primary"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
                                         <div class="fw-semibold"><?= htmlspecialchars($appointment['property_title']) ?></div>
-                                        <small class="text-muted"><?= date('M d, H:i', strtotime($appointment['date_rdv'] . ' ' . $appointment['heure_rdv'])) ?></small>
-                                    </div>
-                                    <div class="text-muted mb-2">
-                                        <i class="fas fa-user me-1"></i><?= htmlspecialchars($appointment['client_name']) ?>
-                                        <br>
-                                        <i class="fas fa-phone me-1"></i><?= htmlspecialchars($appointment['client_phone']) ?>
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-outline-success">
-                                            <i class="fas fa-phone"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-primary">
-                                            <i class="fas fa-envelope"></i>
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-secondary">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
+                                        <small class="text-muted">with <?= htmlspecialchars($appointment['client_name']) ?></small>
+                                        <div class="text-primary mt-1">
+                                            <small><?= date('M d, Y - H:i', strtotime($appointment['appointment_date'])) ?></small>
+                                        </div>
+                                        <?php if (!empty($appointment['location'])): ?>
+                                            <div class="text-muted mt-1">
+                                                <small><i class="fas fa-map-marker-alt me-1"></i><?= htmlspecialchars($appointment['location']) ?></small>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
                             <div class="text-center mt-3">
-                                <a href="manage_appointments.php" class="btn-agent-secondary">
-                                    <i class="fas fa-calendar-alt"></i>
-                                    View All Appointments
+                                <a href="manage_appointments.php" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-calendar-alt me-1"></i>View All Appointments
                                 </a>
                             </div>
                         <?php else: ?>
                             <div class="text-center py-4">
-                                <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                                <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
                                 <p class="text-muted">No upcoming appointments</p>
-                                <a href="manage_appointments.php" class="btn-agent-primary">
-                                    <i class="fas fa-calendar-plus"></i>
-                                    Schedule Meeting
+                                <a href="manage_properties.php" class="btn-luxury-primary">
+                                    <i class="fas fa-plus"></i>
+                                    Add Properties
                                 </a>
                             </div>
                         <?php endif; ?>

@@ -219,6 +219,26 @@ try {
     // Keep empty array if error occurs
 }
 
+// Get recent messages for client
+$recent_messages = [];
+try {
+    $messages_query = "SELECT m.*, 
+                              CONCAT(u.first_name, ' ', u.last_name) as agent_name,
+                              COALESCE(a.agency_name, 'Independent Agent') as agency_name
+                       FROM messages m 
+                       JOIN users u ON m.agent_id = u.id 
+                       LEFT JOIN agents a ON u.id = a.user_id
+                       WHERE m.client_id = :client_id 
+                       ORDER BY m.created_at DESC 
+                       LIMIT 5";
+    $messages_stmt = $pdo->prepare($messages_query);
+    $messages_stmt->execute(['client_id' => $_SESSION['user_id']]);
+    $recent_messages = $messages_stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    error_log("Client messages error: " . $e->getMessage());
+    $recent_messages = [];
+}
+
 // No mock data - only show real appointments from database
 ?>
 
@@ -941,6 +961,15 @@ try {
                                     </div>
                                 </a>
                             </li>
+                            <li>
+                                <a class="dropdown-item" href="messages.php">
+                                    <i class="fas fa-envelope me-2 text-info"></i>
+                                    <div>
+                                        <div class="fw-semibold">Messages</div>
+                                        <small class="text-muted">Inbox & Notifications</small>
+                                    </div>
+                                </a>
+                            </li>
                             <li><hr class="dropdown-divider"></li>
                             
                             <!-- Logout -->
@@ -978,13 +1007,30 @@ try {
             <div class="container">
                 <div class="row align-items-center">
                     <div class="col-md-8">
-                        <h1><i class="fas fa-chart-pie me-3"></i>Dashboard</h1>
-                        <p class="mb-0">Welcome to your personalized dashboard, <?= htmlspecialchars($user_data['first_name']) ?>!</p>
+                        <?php if ($current_section === 'favorites'): ?>
+                            <h1><i class="fas fa-heart me-3"></i>Your Favorite Properties</h1>
+                            <p class="mb-0">Manage and view your saved properties</p>
+                        <?php elseif ($current_section === 'appointments'): ?>
+                            <h1><i class="fas fa-calendar-alt me-3"></i>Your Appointments</h1>
+                            <p class="mb-0">View and manage your scheduled property visits</p>
+                        <?php elseif ($current_section === 'search'): ?>
+                            <h1><i class="fas fa-search me-3"></i>Property Search</h1>
+                            <p class="mb-0">Find your perfect property with our advanced search</p>
+                        <?php else: ?>
+                            <h1><i class="fas fa-chart-pie me-3"></i>Dashboard</h1>
+                            <p class="mb-0">Welcome to your personalized dashboard, <?= htmlspecialchars($user_data['first_name']) ?>!</p>
+                        <?php endif; ?>
                     </div>
                     <div class="col-md-4 text-end">
-                        <a href="../pages/home.php" class="btn btn-light">
-                            <i class="fas fa-arrow-left me-2"></i>Back to Home
-                        </a>
+                        <?php if ($current_section !== 'overview'): ?>
+                            <a href="dashboard.php" class="btn btn-light">
+                                <i class="fas fa-chart-pie me-2"></i>Return to Dashboard
+                            </a>
+                        <?php else: ?>
+                            <a href="../pages/home.php" class="btn btn-light">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Home
+                            </a>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -1069,24 +1115,27 @@ try {
                         </a>
                     </nav>
 
-                    <!-- Quick Actions -->
+                    <!-- Quick Actions for CLIENTS -->
                     <div class="p-3 border-top">
                         <h6 class="text-muted mb-3 text-uppercase fw-semibold" style="font-size: 0.75rem; letter-spacing: 0.05em;">Quick Actions</h6>
                         <div class="d-grid gap-2">
-                            <a href="dashboard.php" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-chart-pie me-1"></i>Dashboard
+                            <a href="../pages/explore.php" class="btn btn-outline-primary">
+                                <i class="fas fa-search me-2"></i>Browse Properties
                             </a>
-                            <a href="account.php" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-user-cog me-1"></i>Account Settings
+                            <a href="?section=appointments" class="btn btn-outline-success">
+                                <i class="fas fa-calendar-alt me-2"></i>My Appointments
+                                <?php if (!empty($upcoming_appointments)): ?>
+                                    <span class="badge bg-success ms-2"><?= count($upcoming_appointments) ?></span>
+                                <?php endif; ?>
                             </a>
-                            <a href="?section=favorites#favoritesSection" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-heart me-1"></i>My Favorites
+                            <a href="messages.php" class="btn btn-outline-warning">
+                                <i class="fas fa-envelope me-2"></i>Contact Agents
+                                <?php if (!empty($recent_messages) && count(array_filter($recent_messages, fn($m) => $m['status'] === 'unread')) > 0): ?>
+                                    <span class="badge bg-warning ms-2">New</span>
+                                <?php endif; ?>
                             </a>
-                            <a href="?section=appointments" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-calendar-alt me-1"></i>Appointments
-                            </a>
-                            <a href="../auth/logout.php" class="btn btn-outline-secondary btn-sm">
-                                <i class="fas fa-sign-out-alt me-1"></i>Logout
+                            <a href="account.php" class="btn btn-outline-secondary">
+                                <i class="fas fa-user-cog me-2"></i>My Account
                             </a>
                         </div>
                     </div>
@@ -1166,6 +1215,59 @@ try {
                                             <a href="../pages/explore.php" class="btn-luxury-primary">
                                                 <i class="fas fa-search"></i>
                                                 Browse Properties
+                                            </a>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Messages -->
+                    <div class="row">
+                        <div class="col-lg-6 mb-4">
+                            <div class="content-card">
+                                <div class="content-card-header">
+                                    <i class="fas fa-envelope me-2"></i>Recent Messages
+                                </div>
+                                <div class="content-card-body">
+                                    <?php if (!empty($recent_messages)): ?>
+                                        <?php foreach ($recent_messages as $message): ?>
+                                            <div class="d-flex align-items-start mb-3 p-3 bg-light rounded">
+                                                <div class="me-3">
+                                                    <i class="fas fa-user-tie fa-2x text-primary"></i>
+                                                </div>
+                                                <div class="flex-grow-1">
+                                                    <div class="fw-semibold"><?= htmlspecialchars($message['agent_name']) ?></div>
+                                                    <small class="text-muted"><?= htmlspecialchars($message['agency_name']) ?></small>
+                                                    <div class="mt-2">
+                                                        <strong>Subject:</strong> <?= htmlspecialchars($message['subject']) ?>
+                                                    </div>
+                                                    <div class="text-muted mt-1">
+                                                        <?= htmlspecialchars(substr($message['message'], 0, 100)) ?>
+                                                        <?= strlen($message['message']) > 100 ? '...' : '' ?>
+                                                    </div>
+                                                    <div class="text-primary mt-2">
+                                                        <small><?= date('M d, Y - H:i', strtotime($message['created_at'])) ?></small>
+                                                        <?php if ($message['status'] === 'unread'): ?>
+                                                            <span class="badge bg-warning ms-2">Unread</span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                        <div class="text-center mt-3">
+                                            <a href="messages.php" class="btn btn-outline-primary btn-sm">
+                                                <i class="fas fa-envelope me-1"></i>View All Messages
+                                            </a>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="text-center py-4">
+                                            <i class="fas fa-envelope-open fa-3x text-muted mb-3"></i>
+                                            <p class="text-muted">No messages yet</p>
+                                            <a href="messages.php" class="btn-luxury-primary">
+                                                <i class="fas fa-plus"></i>
+                                                Start a Conversation
                                             </a>
                                         </div>
                                     <?php endif; ?>
