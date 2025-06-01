@@ -970,6 +970,15 @@ try {
                                     </div>
                                 </a>
                             </li>
+                            <li>
+                                <a class="dropdown-item" href="my_purchases.php">
+                                    <i class="fas fa-gavel me-2 text-warning"></i>
+                                    <div>
+                                        <div class="fw-semibold">My Purchases</div>
+                                        <small class="text-muted">View Purchase History</small>
+                                    </div>
+                                </a>
+                            </li>
                             <li><hr class="dropdown-divider"></li>
                             
                             <!-- Logout -->
@@ -1007,30 +1016,13 @@ try {
             <div class="container">
                 <div class="row align-items-center">
                     <div class="col-md-8">
-                        <?php if ($current_section === 'favorites'): ?>
-                            <h1><i class="fas fa-heart me-3"></i>Your Favorite Properties</h1>
-                            <p class="mb-0">Manage and view your saved properties</p>
-                        <?php elseif ($current_section === 'appointments'): ?>
-                            <h1><i class="fas fa-calendar-alt me-3"></i>Your Appointments</h1>
-                            <p class="mb-0">View and manage your scheduled property visits</p>
-                        <?php elseif ($current_section === 'search'): ?>
-                            <h1><i class="fas fa-search me-3"></i>Property Search</h1>
-                            <p class="mb-0">Find your perfect property with our advanced search</p>
-                        <?php else: ?>
-                            <h1><i class="fas fa-chart-pie me-3"></i>Dashboard</h1>
-                            <p class="mb-0">Welcome to your personalized dashboard, <?= htmlspecialchars($user_data['first_name']) ?>!</p>
-                        <?php endif; ?>
+                        <h1><i class="fas fa-chart-pie me-3"></i>Dashboard</h1>
+                        <p class="mb-0">Welcome to your personalized dashboard, <?= htmlspecialchars($user_data['first_name']) ?>!</p>
                     </div>
                     <div class="col-md-4 text-end">
-                        <?php if ($current_section !== 'overview'): ?>
-                            <a href="dashboard.php" class="btn btn-light">
-                                <i class="fas fa-chart-pie me-2"></i>Return to Dashboard
-                            </a>
-                        <?php else: ?>
-                            <a href="../pages/home.php" class="btn btn-light">
-                                <i class="fas fa-arrow-left me-2"></i>Back to Home
-                            </a>
-                        <?php endif; ?>
+                        <a href="../pages/home.php" class="btn btn-light">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Home
+                        </a>
                     </div>
                 </div>
             </div>
@@ -1112,6 +1104,10 @@ try {
                         <a href="account.php" class="nav-link-luxury">
                             <i class="fas fa-user-cog"></i>
                             <span>Account Settings</span>
+                        </a>
+                        <a href="my_purchases.php" class="nav-link-luxury">
+                            <i class="fas fa-gavel"></i>
+                            <span>My Purchases</span>
                         </a>
                     </nav>
 
@@ -1530,6 +1526,82 @@ try {
                             <?php endif; ?>
                         </div>
                     </div>
+                <?php elseif ($current_section === 'purchases'): ?>
+                    <!-- My Purchases Section -->
+                    <div class="content-card">
+                        <div class="content-card-header">
+                            <i class="fas fa-gavel me-2"></i>My Purchases
+                        </div>
+                        <div class="content-card-body">
+                            <?php
+                            // Fetch user's purchase history
+                            $purchases = [];
+                            try {
+                                $query = "SELECT p.*, pp.price AS purchase_price, pp.date AS purchase_date, u.first_name, u.last_name 
+                                          FROM property_purchases pp
+                                          JOIN properties p ON pp.property_id = p.id
+                                          JOIN users u ON pp.agent_id = u.id
+                                          WHERE pp.client_id = :client_id
+                                          ORDER BY pp.date DESC";
+                                $stmt = $pdo->prepare($query);
+                                $stmt->bindParam(':client_id', $_SESSION['user_id']);
+                                $stmt->execute();
+                                $purchases = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                            } catch (Exception $e) {
+                                error_log("Purchases fetch error: " . $e->getMessage());
+                            }
+                            ?>
+
+                            <?php if (empty($purchases)): ?>
+                                <div class="text-center py-5">
+                                    <i class="fas fa-gavel fa-4x text-muted mb-4"></i>
+                                    <h4 class="text-muted mb-3">No Purchases Found</h4>
+                                    <p class="text-muted mb-4">You haven't made any purchases yet.</p>
+                                    <a href="../pages/explore.php" class="btn-luxury-primary">
+                                        <i class="fas fa-search"></i>
+                                        Browse Properties
+                                    </a>
+                                </div>
+                            <?php else: ?>
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Property</th>
+                                                <th>Agent</th>
+                                                <th>Purchase Price</th>
+                                                <th>Purchase Date</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($purchases as $purchase): ?>
+                                                <tr>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= htmlspecialchars($purchase['title']) ?></div>
+                                                        <small class="text-muted"><?= htmlspecialchars($purchase['address_line1'] . ', ' . $purchase['city']) ?></small>
+                                                    </td>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= htmlspecialchars($purchase['first_name'] . ' ' . $purchase['last_name']) ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div class="fw-semibold">€<?= number_format($purchase['purchase_price'], 0, ',', ' ') ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div class="fw-semibold"><?= date('d M Y', strtotime($purchase['purchase_date'])) ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge bg-success">Completed</span>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
                 <?php endif; ?>
             </div>        </div>
     </div>

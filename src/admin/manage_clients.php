@@ -591,22 +591,10 @@ $admin_data = getCurrentUser();
                                         <div class="col-md-4 text-end">
                                             <div class="btn-group-vertical d-grid gap-2">
                                                 <div class="btn-group">
-                                                    <a href="view_client.php?id=<?= $client['id'] ?>" class="btn btn-outline-info btn-sm">
-                                                        <i class="fas fa-eye"></i> View Profile
+                                                    <a href="view_client.php?id=<?= $client['id'] ?>" class="btn btn-sm btn-info">
+                                                        <i class="fas fa-eye me-1"></i>View Profile
                                                     </a>
-                                                    <a href="edit_client.php?id=<?= $client['id'] ?>" class="btn btn-outline-primary btn-sm">
-                                                        <i class="fas fa-edit"></i> Edit
-                                                    </a>
-                                                </div>
-                                                <div class="btn-group">
-                                                    <button type="button" class="btn btn-outline-success btn-sm" 
-                                                            onclick="sendMessage(<?= $client['id'] ?>, '<?= htmlspecialchars($client['first_name'] . ' ' . $client['last_name']) ?>')">
-                                                        <i class="fas fa-envelope"></i> Message
-                                                    </button>
-                                                    <button type="button" class="btn btn-outline-danger btn-sm" 
-                                                            onclick="confirmDelete(<?= $client['id'] ?>, '<?= htmlspecialchars($client['first_name'] . ' ' . $client['last_name']) ?>')">
-                                                        <i class="fas fa-trash"></i> Delete
-                                                    </button>
+                                                    <!-- Edit and message buttons removed as per request -->
                                                 </div>
                                             </div>
                                         </div>

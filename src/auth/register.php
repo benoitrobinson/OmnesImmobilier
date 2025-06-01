@@ -38,15 +38,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $agent_data = [];
     if ($form_data['role'] === 'agent') {
         $agent_data = [
-            'license_number' => trim($_POST['license_number'] ?? ''),
             'years_experience' => (int)($_POST['years_experience'] ?? 0),
-            'bio' => trim($_POST['bio'] ?? ''),
-            'agency_name' => trim($_POST['agency_name'] ?? ''),
-            'agency_address' => trim($_POST['agency_address'] ?? ''),
-            'agency_phone' => trim($_POST['agency_phone'] ?? ''),
-            'agency_email' => trim(strtolower($_POST['agency_email'] ?? '')),
-            'languages_spoken' => $_POST['languages_spoken'] ?? []
+            'agency_name' => trim($_POST['agency_name'] ?? '')
         ];
+        
+        // Handle CV upload
+        $cv_file_path = '';
+        if (isset($_FILES['agent_cv']) && $_FILES['agent_cv']['error'] === UPLOAD_ERR_OK) {
+            $file_info = $_FILES['agent_cv'];
+            $file_name = $file_info['name'];
+            $file_tmp = $file_info['tmp_name'];
+            $file_size = $file_info['size'];
+            $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+            
+            // Validate file extension and size
+            $allowed_exts = ['pdf', 'doc', 'docx'];
+            $max_size = 5 * 1024 * 1024; // 5MB
+            
+            if (!in_array($file_ext, $allowed_exts)) {
+                $validation_errors['agent_cv'] = 'Only PDF, DOC, and DOCX files are allowed.';
+            } elseif ($file_size > $max_size) {
+                $validation_errors['agent_cv'] = 'File size must not exceed 5MB.';
+            } else {
+                // Create directory if it doesn't exist
+                $upload_dir = 'uploads/agent_cvs/';
+                $full_upload_dir = '../' . $upload_dir;
+                
+                if (!is_dir($full_upload_dir)) {
+                    mkdir($full_upload_dir, 0755, true);
+                }
+                
+                // Generate safe filename
+                $safe_filename = 'cv_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $file_ext;
+                $cv_file_path = $upload_dir . $safe_filename;
+                
+                // Will move the file after successful database insert
+            }
+        }
     }
     
     $password = $_POST['password'] ?? '';
@@ -103,14 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $validation_errors['agency_name'] = 'Agency name is required for agents.';
         }
         
-        if (!empty($agent_data['agency_email']) && !filter_var($agent_data['agency_email'], FILTER_VALIDATE_EMAIL)) {
-            $validation_errors['agency_email'] = 'Please enter a valid agency email address.';
-        }
-        
-        if (!empty($agent_data['agency_phone']) && !preg_match('/^[+]?[0-9\s\-\(\)\.]{10,}$/', $agent_data['agency_phone'])) {
-            $validation_errors['agency_phone'] = 'Please enter a valid agency phone number.';
-        }
-        
         if ($agent_data['years_experience'] < 0 || $agent_data['years_experience'] > 50) {
             $validation_errors['years_experience'] = 'Years of experience must be between 0 and 50.';
         }
@@ -151,33 +171,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
                 // Role-specific table insertions
                 if ($form_data['role'] === 'agent') {
+                    // Handle CV file upload if provided
+                    if (isset($_FILES['agent_cv']) && $_FILES['agent_cv']['error'] === UPLOAD_ERR_OK && !empty($cv_file_path)) {
+                        // Move uploaded file to destination
+                        if (move_uploaded_file($_FILES['agent_cv']['tmp_name'], '../' . $cv_file_path)) {
+                            // Success - file is now in the right place
+                        } else {
+                            // Failed to move file
+                            $cv_file_path = '';
+                            error_log('Failed to move uploaded CV file');
+                        }
+                    }
+                    
                     // Insert into agents table with actual form data
                     $agent_stmt = $pdo->prepare("INSERT INTO agents (
-                        user_id, cv_file_path, profile_picture_path, agency_name, agency_address, 
-                        agency_phone, agency_email, license_number, languages_spoken, 
-                        years_experience, commission_rate, bio, average_rating, total_sales, total_transactions
+                        user_id, cv_file_path, agency_name, years_experience, 
+                        first_name, last_name
                     ) VALUES (
-                        :user_id, :cv_file_path, :profile_picture_path, :agency_name, :agency_address,
-                        :agency_phone, :agency_email, :license_number, :languages_spoken,
-                        :years_experience, :commission_rate, :bio, :average_rating, :total_sales, :total_transactions
+                        :user_id, :cv_file_path, :agency_name, :years_experience,
+                        :first_name, :last_name
                     )");
                     
                     $agent_stmt->execute([
                         'user_id' => $user_id,
-                        'cv_file_path' => '',
-                        'profile_picture_path' => '',
+                        'cv_file_path' => $cv_file_path,
                         'agency_name' => $agent_data['agency_name'] ?: 'Independent Agent',
-                        'agency_address' => $agent_data['agency_address'],
-                        'agency_phone' => $agent_data['agency_phone'] ?: $form_data['phone'],
-                        'agency_email' => $agent_data['agency_email'] ?: $form_data['email'],
-                        'license_number' => $agent_data['license_number'],
-                        'languages_spoken' => json_encode($agent_data['languages_spoken']),
                         'years_experience' => $agent_data['years_experience'],
-                        'commission_rate' => 3.00, // Default commission rate
-                        'bio' => $agent_data['bio'],
-                        'average_rating' => 0.00,
-                        'total_sales' => 0.00,
-                        'total_transactions' => 0
+                        'first_name' => $form_data['first_name'],
+                        'last_name' => $form_data['last_name']
                     ]);
                 } elseif ($form_data['role'] === 'client') {
                     // Insert into clients table
@@ -288,7 +309,7 @@ ob_start();
                 </div>
             <?php else: ?>
 
-            <form method="POST" action="" id="registerForm" novalidate class="needs-validation">
+            <form method="POST" action="" id="registerForm" enctype="multipart/form-data" novalidate class="needs-validation">
                 <!-- Basic Information -->
                 <div class="row">
                     <div class="col-md-6">
@@ -402,44 +423,19 @@ ob_start();
                         <strong>Agent Information</strong> - Please provide your professional details
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-floating mb-3">
-                                <input type="text" 
-                                       class="form-control <?= isset($validation_errors['license_number']) ? 'is-invalid' : '' ?>" 
-                                       id="license_number" 
-                                       name="license_number"
-                                       placeholder="License Number"
-                                       value="<?= htmlspecialchars($agent_data['license_number'] ?? '') ?>">
-                                <label for="license_number">
-                                    <i class="fas fa-id-card me-2"></i>License Number
-                                </label>
-                                <?php if (isset($validation_errors['license_number'])): ?>
-                                    <div class="invalid-feedback">
-                                        <?= htmlspecialchars($validation_errors['license_number']) ?>
-                                    </div>
-                                <?php endif; ?>
+                    <!-- CV Upload Field -->
+                    <div class="mb-3">
+                        <label for="agent_cv" class="form-label">
+                            <i class="fas fa-file-pdf me-2"></i>CV/Resume (PDF, DOC, DOCX) *
+                        </label>
+                        <input type="file" class="form-control <?= isset($validation_errors['agent_cv']) ? 'is-invalid' : '' ?>"
+                               id="agent_cv" name="agent_cv" accept=".pdf,.doc,.docx" required>
+                        <div class="form-text">Upload your professional CV/resume (max 5MB)</div>
+                        <?php if (isset($validation_errors['agent_cv'])): ?>
+                            <div class="invalid-feedback">
+                                <?= htmlspecialchars($validation_errors['agent_cv']) ?>
                             </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-floating mb-3">
-                                <input type="number" 
-                                       class="form-control <?= isset($validation_errors['years_experience']) ? 'is-invalid' : '' ?>" 
-                                       id="years_experience" 
-                                       name="years_experience"
-                                       placeholder="Years of Experience"
-                                       min="0" max="50"
-                                       value="<?= htmlspecialchars($agent_data['years_experience'] ?? '0') ?>">
-                                <label for="years_experience">
-                                    <i class="fas fa-briefcase me-2"></i>Years of Experience
-                                </label>
-                                <?php if (isset($validation_errors['years_experience'])): ?>
-                                    <div class="invalid-feedback">
-                                        <?= htmlspecialchars($validation_errors['years_experience']) ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="form-floating mb-3">
@@ -448,6 +444,7 @@ ob_start();
                                id="agency_name" 
                                name="agency_name"
                                placeholder="Agency Name"
+                               required
                                value="<?= htmlspecialchars($agent_data['agency_name'] ?? '') ?>">
                         <label for="agency_name">
                             <i class="fas fa-building me-2"></i>Agency Name *
@@ -460,96 +457,22 @@ ob_start();
                     </div>
 
                     <div class="form-floating mb-3">
-                        <textarea class="form-control <?= isset($validation_errors['agency_address']) ? 'is-invalid' : '' ?>" 
-                                  id="agency_address" 
-                                  name="agency_address"
-                                  placeholder="Agency Address"
-                                  style="height: 100px"><?= htmlspecialchars($agent_data['agency_address'] ?? '') ?></textarea>
-                        <label for="agency_address">
-                            <i class="fas fa-map-marker-alt me-2"></i>Agency Address
+                        <input type="number" 
+                               class="form-control <?= isset($validation_errors['years_experience']) ? 'is-invalid' : '' ?>" 
+                               id="years_experience" 
+                               name="years_experience"
+                               placeholder="Years of Experience"
+                               min="0" max="50"
+                               required
+                               value="<?= htmlspecialchars($agent_data['years_experience'] ?? '0') ?>">
+                        <label for="years_experience">
+                            <i class="fas fa-briefcase me-2"></i>Years of Experience *
                         </label>
-                        <?php if (isset($validation_errors['agency_address'])): ?>
+                        <?php if (isset($validation_errors['years_experience'])): ?>
                             <div class="invalid-feedback">
-                                <?= htmlspecialchars($validation_errors['agency_address']) ?>
+                                <?= htmlspecialchars($validation_errors['years_experience']) ?>
                             </div>
                         <?php endif; ?>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-floating mb-3">
-                                <input type="tel" 
-                                       class="form-control <?= isset($validation_errors['agency_phone']) ? 'is-invalid' : '' ?>" 
-                                       id="agency_phone" 
-                                       name="agency_phone"
-                                       placeholder="Agency Phone"
-                                       value="<?= htmlspecialchars($agent_data['agency_phone'] ?? '') ?>">
-                                <label for="agency_phone">
-                                    <i class="fas fa-phone me-2"></i>Agency Phone
-                                </label>
-                                <?php if (isset($validation_errors['agency_phone'])): ?>
-                                    <div class="invalid-feedback">
-                                        <?= htmlspecialchars($validation_errors['agency_phone']) ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="form-floating mb-3">
-                                <input type="email" 
-                                       class="form-control <?= isset($validation_errors['agency_email']) ? 'is-invalid' : '' ?>" 
-                                       id="agency_email" 
-                                       name="agency_email"
-                                       placeholder="Agency Email"
-                                       value="<?= htmlspecialchars($agent_data['agency_email'] ?? '') ?>">
-                                <label for="agency_email">
-                                    <i class="fas fa-envelope me-2"></i>Agency Email
-                                </label>
-                                <?php if (isset($validation_errors['agency_email'])): ?>
-                                    <div class="invalid-feedback">
-                                        <?= htmlspecialchars($validation_errors['agency_email']) ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-floating mb-3">
-                        <textarea class="form-control <?= isset($validation_errors['bio']) ? 'is-invalid' : '' ?>" 
-                                  id="bio" 
-                                  name="bio"
-                                  placeholder="Professional Bio"
-                                  style="height: 120px"><?= htmlspecialchars($agent_data['bio'] ?? '') ?></textarea>
-                        <label for="bio">
-                            <i class="fas fa-user-edit me-2"></i>Professional Bio
-                        </label>
-                        <div class="form-text">Tell clients about your experience and expertise</div>
-                        <?php if (isset($validation_errors['bio'])): ?>
-                            <div class="invalid-feedback">
-                                <?= htmlspecialchars($validation_errors['bio']) ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-
-                    <!-- Languages Spoken -->
-                    <div class="mb-3">
-                        <label class="form-label">
-                            <i class="fas fa-language me-2"></i>Languages Spoken
-                        </label>
-                        <div class="row">
-                            <?php foreach ($available_languages as $key => $label): ?>
-                                <div class="col-md-4 mb-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               id="lang_<?= $key ?>" name="languages_spoken[]" value="<?= $key ?>"
-                                               <?= in_array($key, $agent_data['languages_spoken'] ?? []) ? 'checked' : '' ?>>
-                                        <label class="form-check-label" for="lang_<?= $key ?>">
-                                            <?= $label ?>
-                                        </label>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
                     </div>
                 </div>
 
@@ -653,14 +576,18 @@ function toggleAgentFields() {
         agentFields.classList.remove('d-none');
         submitText.textContent = 'Create Agent Account';
         
-        // Make agency name required for agents
+        // Make agent fields required
         document.getElementById('agency_name').required = true;
+        document.getElementById('years_experience').required = true;
+        document.getElementById('agent_cv').required = true;
     } else {
         agentFields.classList.add('d-none');
         submitText.textContent = 'Create Professional Account';
         
-        // Remove required from agency fields
+        // Remove required from agent fields
         document.getElementById('agency_name').required = false;
+        document.getElementById('years_experience').required = false;
+        document.getElementById('agent_cv').required = false;
     }
 }
 
@@ -677,6 +604,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         form.classList.add('was-validated');
     });
+    
+    // Update the form element to support file uploads
+    document.getElementById('registerForm').setAttribute('enctype', 'multipart/form-data');
 });
 
 // Password strength indicator

@@ -93,6 +93,14 @@ function showNotification(message, type) {
 
 // Show property details in modal
 function showPropertyDetails(property, isFavorited) {
+    // First, set the property ID in the modal header
+    const propertyIdElement = document.getElementById('propertyModalId');
+    if (propertyIdElement) {
+        propertyIdElement.textContent = property.id;
+        propertyIdElement.style.fontWeight = "600";
+        propertyIdElement.style.color = "#000";
+    }
+    
     const modalTitle = document.getElementById('propertyModalTitle');
     const modalBody = document.getElementById('propertyModalBody');
     

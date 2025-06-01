@@ -426,6 +426,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     
                     // Check if this property is favorited by the current user
                     $isFavorited = in_array($p['id'], $userFavorites);
+                    
+                    // Define $isAuction for all user types, not just clients
+                    $isAuction = $p['property_type'] === 'auction';
+                    $auctionDetails = null;
+                    
+                    // Add debugging output
+                    echo "<!-- DEBUG: Property #{$p['id']} Type: {$p['property_type']} IsAuction: " . ($isAuction ? 'true' : 'false') . " -->";
+                    
+                    if ($isAuction) {
+                        try {
+                            $auctionQuery = $pdo->prepare("
+                                SELECT pa.*, COUNT(ap.id) as participant_count, COUNT(DISTINCT ab.user_id) as bidder_count
+                                FROM property_auctions pa
+                                LEFT JOIN auction_participants ap ON pa.id = ap.auction_id
+                                LEFT JOIN auction_bids ab ON pa.id = ab.auction_id
+                                WHERE pa.property_id = ?
+                                GROUP BY pa.id
+                            ");
+                            $auctionQuery->execute([$p['id']]);
+                            $auctionDetails = $auctionQuery->fetch(PDO::FETCH_ASSOC);
+                            
+                            // Add debugging for auction details
+                            echo "<!-- DEBUG: Auction details for #{$p['id']}: " . ($auctionDetails ? 'Found' : 'Not found') . " -->";
+                            if ($auctionDetails) {
+                                echo "<!-- Status: {$auctionDetails['status']} -->";
+                            }
+                        } catch (Exception $e) {
+                            echo "<!-- ERROR: {$e->getMessage()} -->";
+                        }
+                    }
                 ?>
                     <div class="col-md-4 mb-4">
                         <div class="card property-card h-100">
@@ -475,22 +505,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                         </button>
                                         
                                         <?php if ($is_client && isset($_SESSION['user_id'])): ?>
-                                            <a href="book_appointment.php?property_id=<?= $p['id'] ?>&agent_id=<?= $p['agent_id'] ?>"
-                                               class="btn btn-primary">
-                                                <i class="fas fa-calendar-alt me-1"></i>Book Appointment
-                                            </a>
+                                            <!-- Remove the duplicate auction check since we already did it above -->
+                                            <?php if ($isAuction && $auctionDetails && $auctionDetails['status'] === 'active'): ?>
+                                                <button type="button" 
+                                                       class="btn btn-warning"
+                                                       data-bs-toggle="modal"
+                                                       data-bs-target="#auctionModal"
+                                                       onclick="showAuctionDetails(<?= htmlspecialchars(json_encode($p)) ?>, <?= htmlspecialchars(json_encode($auctionDetails)) ?>)">
+                                                    <i class="fas fa-gavel me-1"></i>Bid Now - €<?= number_format($auctionDetails['current_price'], 0, ',', ' ') ?>
+                                                </button>
+                                            <?php else: ?>
+                                                <a href="book_appointment.php?property_id=<?= $p['id'] ?>&agent_id=<?= $p['agent_id'] ?>"
+                                                   class="btn btn-primary">
+                                                    <i class="fas fa-calendar-alt me-1"></i>Book Appointment
+                                                </a>
+                                            <?php endif; ?>
                                         <?php elseif (!isset($_SESSION['user_id'])): ?>
                                             <a href="../auth/login.php" class="btn btn-primary">
-                                                <i class="fas fa-sign-in-alt me-1"></i>Login to Book
+                                                <i class="fas fa-sign-in-alt me-1"></i>Login to
+                                                <?php if ($isAuction): ?> Bid<?php else: ?> Book<?php endif; ?>
                                             </a>
                                         <?php elseif ($is_agent): ?>
                                             <button class="btn btn-secondary" disabled>
                                                 <i class="fas fa-user-tie me-1"></i>Agent View
                                             </button>
                                         <?php elseif ($is_admin): ?>
-                                            <button class="btn btn-secondary" disabled>
-                                                <i class="fas fa-user-shield me-1"></i>Admin View
-                                            </button>
+                                            <?php if ($isAuction && $auctionDetails && $auctionDetails['status'] === 'active'): ?>
+                                                <button type="button" 
+                                                       class="btn btn-danger"
+                                                       data-bs-toggle="modal"
+                                                       data-bs-target="#auctionModal"
+                                                       onclick="showAuctionDetailsAdmin(<?= htmlspecialchars(json_encode($p)) ?>, <?= htmlspecialchars(json_encode($auctionDetails)) ?>)">
+                                                    <i class="fas fa-gavel me-1"></i>Manage Auction
+                                                </button>
+                                            <?php else: ?>
+                                                <button class="btn btn-secondary" disabled>
+                                                    <i class="fas fa-user-shield me-1"></i>Admin View
+                                                </button>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -508,10 +560,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="propertyModalTitle">Property Details</h5>
+                <div>
+                    <div class="text-muted small mb-1">Property ID: <span id="propertyModalId"></span></div>
+                    <h5 class="modal-title" id="propertyModalTitle">Property Details</h5>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="propertyModalBody">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auction Modal -->
+<div class="modal fade" id="auctionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <div class="text-warning small mb-1">Auction Property ID: <span id="auctionPropertyId" style="font-weight: 700; color: #000;"></span></div>
+                    <h5 class="modal-title" id="auctionModalTitle">Property Auction</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="auctionModalBody">
                 <!-- Content will be populated by JavaScript -->
             </div>
         </div>
@@ -536,6 +609,158 @@ console.log("User session data:", {
     isAdmin: <?= $is_admin ? 'true' : 'false' ?>,
     isClient: <?= $is_client ? 'true' : 'false' ?>
 });
+
+// Replace the showPropertyDetails function completely
+window.showPropertyDetails = function(property, isFavorited) {
+    console.log('Property data received:', property); // Debug
+    
+    // Set property ID directly - moved to top of function
+    const propertyIdElement = document.getElementById('propertyModalId');
+    if (propertyIdElement) {
+        propertyIdElement.textContent = property.id;
+        propertyIdElement.style.fontWeight = "700"; // Make more bold (was 600)
+        propertyIdElement.style.color = "#000"; 
+    }
+    
+    // Build the modal content
+    const modalBody = document.getElementById('propertyModalBody');
+    
+    // Set the title after ID is set
+    document.getElementById('propertyModalTitle').textContent = property.title;
+    
+    // Generate carousel HTML
+    let images = [];
+    if (property.images && typeof property.images === 'string') {
+        try {
+            images = JSON.parse(property.images);
+        } catch (e) {
+            console.error('Failed to parse images JSON:', e);
+        }
+    } else if (Array.isArray(property.images)) {
+        images = property.images;
+    }
+    
+    if (!images.length) {
+        // Fallback to default images if no images in database
+        images = [
+            `../assets/images/property${property.id}-1.jpg`,
+            `../assets/images/property${property.id}-2.jpg`,
+            `../assets/images/property${property.id}-3.jpg`,
+        ];
+    }
+    
+    // Now construct the modal content
+    const imageCarousel = `
+        <div id="propertyImagesCarousel" class="carousel slide" data-bs-ride="carousel">
+            <div class="carousel-inner">
+                ${images.map((img, index) => `
+                    <div class="carousel-item ${index === 0 ? 'active' : ''}">
+                        <img src="${img}" class="d-block w-100" alt="Property Image ${index + 1}">
+                    </div>
+                `).join('')}
+            </div>
+            <button class="carousel-control-prev" type="button" data-bs-target="#propertyImagesCarousel" data-bs-slide="prev">
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Previous</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#propertyImagesCarousel" data-bs-slide="next">
+                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Next</span>
+            </button>
+        </div>
+    `;
+    
+    // Add the image carousel to the modal body
+    modalBody.innerHTML = imageCarousel;
+    
+    // Add favorite button if user is logged in and is a client
+    if (userLoggedIn && isClient) {
+        const favoriteButton = document.createElement('button');
+        favoriteButton.className = `btn btn-sm ${isFavorited ? 'btn-danger' : 'btn-outline-danger'} mb-3`;
+        favoriteButton.innerHTML = `
+            <i class="fas fa-heart${isFavorited ? '' : '-o'}"></i> 
+            ${isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+        `;
+        favoriteButton.onclick = function() {
+            const action = isFavorited ? 'remove_favorite' : 'add_favorite';
+            fetch('../ajax/favorites.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: `action=${action}&user_id=${<?= $_SESSION['user_id'] ?>}&property_id=${property.id}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update favorite button state
+                    isFavorited = !isFavorited;
+                    favoriteButton.classList.toggle('btn-danger');
+                    favoriteButton.classList.toggle('btn-outline-danger');
+                    favoriteButton.innerHTML = `
+                        <i class="fas fa-heart${isFavorited ? '' : '-o'}"></i> 
+                        ${isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                    `;
+                    // Optionally, update global userFavorites array
+                    if (isFavorited) {
+                        userFavorites.push(property.id);
+                    } else {
+                        const index = userFavorites.indexOf(property.id);
+                        if (index > -1) {
+                            userFavorites.splice(index, 1);
+                        }
+                    }
+                } else {
+                    alert('Failed to update favorite status. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating favorite status:', error);
+                alert('An error occurred while updating favorites. Please try again.');
+            });
+        };
+        
+        // Prepend the favorite button to the modal body
+        modalBody.insertBefore(favoriteButton, modalBody.firstChild);
+    }
+    
+    // Add appointment booking form if applicable
+    if (userLoggedIn && isClient) {
+        const appointmentForm = `
+            <div class="mt-4">
+                <h6>Book an Appointment</h6>
+                <div class="mb-3">
+                    <label for="appointment_date" class="form-label">Select Date</label>
+                    <input type="date" class="form-control" id="appointment_date" required>
+                </div>
+                <div class="mb-3">
+                    <label for="appointment_time" class="form-label">Select Time</label>
+                    <select class="form-select" id="appointment_time" required>
+                        <option value="">Select a time</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="bookAppointment(${property.id}, ${property.agent_id})">
+                    <i class="fas fa-calendar-alt"></i> Book Appointment
+                </button>
+            </div>
+        `;
+        
+        // Append the appointment form to the modal body
+        modalBody.insertAdjacentHTML('beforeend', appointmentForm);
+        
+        // Fetch available times for the selected date
+        const dateInput = document.getElementById('appointment_date');
+        dateInput.addEventListener('change', function() {
+            const selectedDate = this.value;
+            if (selectedDate) {
+                fetchAvailableTimes(property.agent_id, selectedDate);
+            } else {
+                // Clear time select if no date is selected
+                const timeSelect = document.getElementById('appointment_time');
+                timeSelect.innerHTML = '<option value="">Select a time</option>';
+                timeSelect.disabled = true;
+            }
+        });
+    }
+};
 
 // Update the fetchAvailableTimes function to use appointments.php
 function fetchAvailableTimes(agentId, date) {
@@ -611,6 +836,379 @@ function bookAppointment(propertyId, agentId) {
         console.error('Error booking appointment:', error);
         alert('Failed to book appointment. Please try again.');
     });
+}
+
+// Force the property ID to show by checking when modal is opened
+document.addEventListener('DOMContentLoaded', function() {
+    const propertyModal = document.getElementById('propertyModal');
+    
+    if (propertyModal) {
+        propertyModal.addEventListener('show.bs.modal', function(event) {
+            // Get button that triggered the modal
+            const button = event.relatedTarget;
+            
+            // Check if modal is fully shown
+            setTimeout(function() {
+                // Make sure property ID is displayed by getting it from the data attribute
+                const idSpan = document.getElementById('propertyModalId');
+                if (idSpan && (!idSpan.textContent || idSpan.textContent === '')) {
+                    // Try to get ID from modal title or other source
+                    const clickedProperty = button ? button.closest('.property-card') : null;
+                    if (clickedProperty) {
+                        const propertyId = clickedProperty.getAttribute('data-property-id');
+                        if (propertyId) {
+                            idSpan.textContent = propertyId;
+                        }
+                    }
+                }
+            }, 100);
+        });
+    }
+});
+
+// Add auction functionality
+function showAuctionDetails(property, auctionDetails) {
+    console.log('Auction data received:', auctionDetails);
+    
+    // Set property ID
+    const propertyIdElement = document.getElementById('auctionPropertyId');
+    if (propertyIdElement) {
+        propertyIdElement.textContent = property.id;
+    }
+    
+    // Set the title
+    document.getElementById('auctionModalTitle').textContent = property.title + ' - Auction';
+    
+    // Build the modal content
+    const modalBody = document.getElementById('auctionModalBody');
+    
+    // Parse images
+    let images = [];
+    if (property.images && typeof property.images === 'string') {
+        try {
+            images = JSON.parse(property.images);
+        } catch (e) {
+            console.error('Failed to parse images JSON:', e);
+        }
+    } else if (Array.isArray(property.images)) {
+        images = property.images;
+    }
+    
+    if (!images.length) {
+        images = [
+            `../assets/images/property${property.id}-1.jpg`,
+            `../assets/images/property${property.id}-2.jpg`,
+            `../assets/images/property${property.id}-3.jpg`,
+        ];
+    }
+    
+    // Check if user has verified payment methods
+    fetch('../ajax/user_verification.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'action=check_verification'
+    })
+    .then(response => response.json())
+    .then(data => {
+        // First, add carousel
+        const imageCarousel = `
+            <div id="auctionImagesCarousel" class="carousel slide mb-3" data-bs-ride="carousel">
+                <div class="carousel-inner">
+                    ${images.map((img, index) => `
+                        <div class="carousel-item ${index === 0 ? 'active' : ''}">
+                            <img src="${img}" class="d-block w-100" alt="Property Image ${index + 1}" 
+                                 style="max-height: 300px; object-fit: cover;">
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="carousel-control-prev" type="button" data-bs-target="#auctionImagesCarousel" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon"></span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#auctionImagesCarousel" data-bs-slide="next">
+                    <span class="carousel-control-next-icon"></span>
+                </button>
+            </div>
+            
+            <div class="alert alert-warning">
+                <i class="fas fa-gavel me-2"></i> This property is available through auction.
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">Auction Details</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Starting Price:</strong> €${parseInt(auctionDetails.starting_price).toLocaleString()}</p>
+                            <p><strong>Current Price:</strong> <span class="text-primary fw-bold">€${parseInt(auctionDetails.current_price).toLocaleString()}</span></p>
+                            <p><strong>Status:</strong> <span class="badge bg-success">Active</span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Participants:</strong> ${auctionDetails.participant_count || 0}</p>
+                            <p><strong>Bidders:</strong> ${auctionDetails.bidder_count || 0}</p>
+                            <p><strong>Started:</strong> ${new Date(auctionDetails.start_date).toLocaleDateString()}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">Property Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Type:</strong> ${property.property_type.charAt(0).toUpperCase() + property.property_type.slice(1)}</p>
+                            <p><strong>Location:</strong> ${property.city}</p>
+                            <p><strong>Address:</strong> ${property.address_line1}</p>
+                        </div>
+                        <div class="col-md-6">
+                            ${property.bedrooms ? `<p><strong>Bedrooms:</strong> ${property.bedrooms}</p>` : ''}
+                            ${property.bathrooms ? `<p><strong>Bathrooms:</strong> ${property.bathrooms}</p>` : ''}
+                            ${property.living_area ? `<p><strong>Living Area:</strong> ${property.living_area} m²</p>` : ''}
+                        </div>
+                    </div>
+                    <p><strong>Description:</strong> ${property.description}</p>
+                </div>
+            </div>
+        `;
+        
+        // Set the HTML content
+        modalBody.innerHTML = imageCarousel;
+        
+        // Now add the bidding form, if user is verified
+        if (data.verified) {
+            const bidForm = document.createElement('div');
+            bidForm.className = 'card';
+            bidForm.innerHTML = `
+                <div class="card-header bg-warning">
+                    <h6 class="mb-0">Place Your Bid</h6>
+                </div>
+                <div class="card-body">
+                    <form id="bidForm" class="row g-3 align-items-center">
+                        <input type="hidden" name="auction_id" value="${auctionDetails.id}">
+                        <input type="hidden" name="property_id" value="${property.id}">
+                        <div class="col-md-7">
+                            <label for="bidAmount" class="form-label">Your Bid (€)</label>
+                            <input type="number" class="form-control" id="bidAmount" name="bid_amount" 
+                                   min="${parseInt(auctionDetails.current_price) + 1000}" 
+                                   value="${parseInt(auctionDetails.current_price) + 5000}"
+                                   step="1000" required>
+                            <div class="form-text">Minimum bid: €${parseInt(auctionDetails.current_price) + 1000}</div>
+                        </div>
+                        <div class="col-md-5 d-flex align-items-end">
+                            <button type="button" class="btn btn-warning w-100" onclick="placeBid()">
+                                <i class="fas fa-gavel me-2"></i>Place Bid
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            modalBody.appendChild(bidForm);
+        } else {
+            // Show verification warning
+            const verificationWarning = document.createElement('div');
+            verificationWarning.className = 'alert alert-danger';
+            verificationWarning.innerHTML = `
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Verification Required!</strong> You need to verify your payment method before placing bids.
+                <hr>
+                <a href="../client/dashboard.php?section=payment" class="btn btn-sm btn-danger">
+                    <i class="fas fa-credit-card me-1"></i>Verify Payment Method
+                </a>
+            `;
+            modalBody.appendChild(verificationWarning);
+        }
+        
+        // Add bidding history
+        fetch('../ajax/auctions.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `action=get_bids&auction_id=${auctionDetails.id}`
+        })
+        .then(response => response.json())
+        .then(bidData => {
+            const bidsSection = document.createElement('div');
+            bidsSection.className = 'mt-4';
+            bidsSection.innerHTML = `
+                <h6 class="mb-3">Bidding History</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Bidder</th>
+                                <th>Amount</th>
+                                <th>Date & Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bidHistoryBody">
+                            ${bidData.bids && bidData.bids.length > 0 ? 
+                                bidData.bids.map(bid => `
+                                    <tr>
+                                        <td>${bid.user_name}</td>
+                                        <td>€${parseInt(bid.bid_amount).toLocaleString()}</td>
+                                        <td>${new Date(bid.bid_time).toLocaleString()}</td>
+                                    </tr>
+                                `).join('') :
+                                '<tr><td colspan="3" class="text-center">No bids yet. Be the first to bid!</td></tr>'
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            modalBody.appendChild(bidsSection);
+        });
+    })
+    .catch(error => {
+        console.error('Error checking verification:', error);
+        modalBody.innerHTML += `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                Error loading auction details. Please try again later.
+            </div>
+        `;
+    });
+}
+
+// Admin auction management
+function showAuctionDetailsAdmin(property, auctionDetails) {
+    // Similar to showAuctionDetails but with admin controls
+    showAuctionDetails(property, auctionDetails);
+    
+    // Add admin controls
+    setTimeout(() => {
+        const modalBody = document.getElementById('auctionModalBody');
+        const adminControls = document.createElement('div');
+        adminControls.className = 'card mt-4 border-danger';
+        adminControls.innerHTML = `
+            <div class="card-header bg-danger text-white">
+                <h6 class="mb-0">Admin Controls</h6>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-danger" onclick="endAuction(${auctionDetails.id})">
+                        <i class="fas fa-stop-circle me-2"></i>End Auction Now
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="extendAuction(${auctionDetails.id})">
+                        <i class="fas fa-clock me-2"></i>Extend Auction 24h
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="cancelAuction(${auctionDetails.id})">
+                        <i class="fas fa-ban me-2"></i>Cancel Auction
+                    </button>
+                </div>
+            </div>
+        `;
+        modalBody.appendChild(adminControls);
+    }, 500);
+}
+
+// Function to place a bid
+function placeBid() {
+    const bidAmount = document.getElementById('bidAmount').value;
+    const form = document.getElementById('bidForm');
+    const auctionId = form.elements['auction_id'].value;
+    const propertyId = form.elements['property_id'].value;
+    
+    if (!bidAmount) {
+        alert('Please enter a bid amount');
+        return;
+    }
+    
+    fetch('../ajax/auctions.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=place_bid&auction_id=${auctionId}&property_id=${propertyId}&bid_amount=${bidAmount}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Your bid was placed successfully!');
+            // Refresh the auction modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('auctionModal'));
+            modal.hide();
+            
+            // Update the property price display in the card
+            location.reload(); // Simple solution - reload the page
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error placing bid:', error);
+        alert('An error occurred while placing your bid. Please try again.');
+    });
+}
+
+// Admin functions
+function endAuction(auctionId) {
+    if (confirm('Are you sure you want to end this auction? The highest bidder will win.')) {
+        fetch('../ajax/auctions.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `action=end_auction&auction_id=${auctionId}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Auction ended successfully. The winner has been notified.');
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error ending auction:', error);
+            alert('An error occurred. Please try again.');
+        });
+    }
+}
+
+function extendAuction(auctionId) {
+    if (confirm('Are you sure you want to extend this auction by 24 hours?')) {
+        fetch('../ajax/auctions.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `action=extend_auction&auction_id=${auctionId}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Auction extended by 24 hours.');
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error extending auction:', error);
+            alert('An error occurred. Please try again.');
+        });
+    }
+}
+
+function cancelAuction(auctionId) {
+    if (confirm('Are you sure you want to cancel this auction? All bids will be cancelled.')) {
+        fetch('../ajax/auctions.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `action=cancel_auction&auction_id=${auctionId}`
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Auction cancelled successfully.');
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error cancelling auction:', error);
+            alert('An error occurred. Please try again.');
+        });
+    }
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

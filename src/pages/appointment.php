@@ -36,6 +36,27 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Count appointments by status
+$status_counts = [
+    'all' => count($appointments),
+    'scheduled' => 0,
+    'cancelled' => 0,
+    'completed' => 0,
+    'pending' => 0
+];
+
+foreach ($appointments as $appointment) {
+    if (isset($status_counts[$appointment['status']])) {
+        $status_counts[$appointment['status']]++;
+    }
+}
+
+// Get active tab from URL or default to 'all'
+$active_tab = isset($_GET['status']) ? $_GET['status'] : 'all';
+if (!in_array($active_tab, ['all', 'scheduled', 'cancelled', 'completed', 'pending'])) {
+    $active_tab = 'all';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -190,7 +211,37 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="content-card-header">
           <i class="fas fa-calendar-alt me-2"></i>My Appointments (<?= count($appointments) ?>)
         </div>
-        <div class="content-card-body">
+        
+        <!-- Filter tabs -->
+        <div class="content-card-body pb-0">
+          <ul class="nav nav-tabs">
+            <li class="nav-item">
+              <a class="nav-link <?= $active_tab === 'all' ? 'active' : '' ?>" href="?status=all">
+                All <span class="badge bg-secondary ms-1"><?= $status_counts['all'] ?></span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link <?= $active_tab === 'scheduled' ? 'active' : '' ?>" href="?status=scheduled">
+                <i class="fas fa-calendar-check me-1 text-success"></i>
+                Scheduled <span class="badge bg-success ms-1"><?= $status_counts['scheduled'] ?></span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link <?= $active_tab === 'completed' ? 'active' : '' ?>" href="?status=completed">
+                <i class="fas fa-check-circle me-1 text-primary"></i>
+                Completed <span class="badge bg-primary ms-1"><?= $status_counts['completed'] ?></span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link <?= $active_tab === 'cancelled' ? 'active' : '' ?>" href="?status=cancelled">
+                <i class="fas fa-times-circle me-1 text-danger"></i>
+                Cancelled <span class="badge bg-danger ms-1"><?= $status_counts['cancelled'] ?></span>
+              </a>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="content-card-body pt-4">
           <div class="table-responsive">
             <table class="table table-hover">
               <thead class="table-light">
@@ -203,7 +254,13 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </tr>
               </thead>
               <tbody>
-                <?php foreach($appointments as $a): ?>
+                <?php 
+                $filtered_count = 0;
+                foreach($appointments as $a): 
+                  // Filter based on selected tab
+                  if ($active_tab !== 'all' && $a['status'] !== $active_tab) continue;
+                  $filtered_count++;
+                ?>
                   <tr>
                     <td>
                       <div class="fw-semibold"><?= date('d M Y', strtotime($a['appointment_date'])) ?></div>
@@ -263,6 +320,15 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </td>
                   </tr>
                 <?php endforeach; ?>
+                
+                <?php if ($filtered_count === 0): ?>
+                <tr>
+                  <td colspan="5" class="text-center py-4 text-muted">
+                    <i class="fas fa-filter me-2"></i>
+                    No <?= $active_tab ?> appointments found
+                  </td>
+                </tr>
+                <?php endif; ?>
               </tbody>
             </table>
           </div>
@@ -281,7 +347,7 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
               'user_id' => 'INT NULL', 
               'notes' => 'TEXT NULL'
           ];
-          
+            
           foreach ($columns_to_add as $column => $definition) {
               try {
                   $pdo->exec("ALTER TABLE agent_availability ADD COLUMN $column $definition");

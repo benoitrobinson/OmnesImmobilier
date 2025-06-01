@@ -19,15 +19,9 @@ $form_data = [
     'email' => '',
     'phone' => '',
     'agency_name' => 'Omnes Immobilier',
-    'agency_address' => '',
-    'agency_phone' => '',
     'agency_email' => '',
-    'license_number' => '',
     'years_experience' => 0,
-    'specializations' => [],
-    'languages_spoken' => [],
     'bio' => '',
-    'commission_rate' => 3.0
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -39,23 +33,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'phone' => trim($_POST['phone'] ?? ''),
         'password' => $_POST['password'] ?? '',
         'agency_name' => trim($_POST['agency_name'] ?? ''),
-        'agency_address' => trim($_POST['agency_address'] ?? ''),
-        'agency_phone' => trim($_POST['agency_phone'] ?? ''),
         'agency_email' => trim($_POST['agency_email'] ?? ''),
-        'license_number' => trim($_POST['license_number'] ?? ''),
         'years_experience' => (int)($_POST['years_experience'] ?? 0),
-        'specializations' => $_POST['specializations'] ?? [],
-        'languages_spoken' => $_POST['languages_spoken'] ?? [],
-        'bio' => trim($_POST['bio'] ?? ''),
-        'commission_rate' => (float)($_POST['commission_rate'] ?? 3.0)
+        'bio' => trim($_POST['bio'] ?? '')
     ];
+    
+    // Handle CV upload
+    $cv_file_path = '';
+    if (isset($_FILES['agent_cv']) && $_FILES['agent_cv']['error'] === UPLOAD_ERR_OK) {
+        $file_info = $_FILES['agent_cv'];
+        $file_name = $file_info['name'];
+        $file_tmp = $file_info['tmp_name'];
+        $file_size = $file_info['size'];
+        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+        
+        // Validate file extension and size
+        $allowed_exts = ['pdf', 'doc', 'docx'];
+        $max_size = 5 * 1024 * 1024; // 5MB
+        
+        if (!in_array($file_ext, $allowed_exts)) {
+            $error = 'Only PDF, DOC, and DOCX files are allowed for CV.';
+        } elseif ($file_size > $max_size) {
+            $error = 'CV file size must not exceed 5MB.';
+        } else {
+            // Create directory if it doesn't exist
+            $upload_dir = 'uploads/agent_cvs/';
+            $full_upload_dir = '../' . $upload_dir;
+            
+            if (!is_dir($full_upload_dir)) {
+                mkdir($full_upload_dir, 0755, true);
+            }
+            
+            // Generate safe filename
+            $safe_filename = 'cv_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $file_ext;
+            $cv_file_path = $upload_dir . $safe_filename;
+        }
+    }
     
     // Validation
     if (empty($form_data['first_name']) || empty($form_data['last_name'])) {
         $error = 'First name and last name are required.';
     } elseif (!filter_var($form_data['email'], FILTER_VALIDATE_EMAIL)) {
         $error = 'Please enter a valid email address.';
-    } elseif (!filter_var($form_data['agency_email'], FILTER_VALIDATE_EMAIL)) {
+    } elseif (!empty($form_data['agency_email']) && !filter_var($form_data['agency_email'], FILTER_VALIDATE_EMAIL)) {
         $error = 'Please enter a valid agency email address.';
     } elseif (strlen($form_data['password']) < 8) {
         $error = 'Password must be at least 8 characters long.';
@@ -79,8 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (:first_name, :last_name, :email, :password_hash, :phone, 'agent', NOW())
                 ");
                 $user_stmt->execute([
-                    'first_name' => $form_data['first_name'],
-                    'last_name' => $form_data['last_name'],
+                    'first_name' => $form_data['first_name'],  // Stored HERE in users table
+                    'last_name' => $form_data['last_name'],    // Stored HERE in users table
                     'email' => $form_data['email'],
                     'password_hash' => $password_hash,
                     'phone' => $form_data['phone']
@@ -88,73 +108,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $user_id = $db->lastInsertId();
                 
-                // Insert into agents table
+                // Move CV file if uploaded
+                if (!empty($cv_file_path) && isset($_FILES['agent_cv']) && $_FILES['agent_cv']['error'] === UPLOAD_ERR_OK) {
+                    if (!move_uploaded_file($_FILES['agent_cv']['tmp_name'], '../' . $cv_file_path)) {
+                        // Failed to move file
+                        $cv_file_path = '';
+                        error_log('Failed to move uploaded CV file');
+                    }
+                }
+                
+                // Insert into agents table with CV file path
                 $agent_stmt = $db->prepare("
                     INSERT INTO agents (
-                        user_id, cv_file_path, profile_picture_path, 
-                        agency_name, agency_address, agency_phone, agency_email,
-                        license_number, specializations, languages_spoken, 
-                        years_experience, bio, commission_rate
+                        user_id, cv_file_path, profile_picture_path, agency_name, agency_email, 
+                        years_experience, first_name, last_name
                     ) VALUES (
-                        :user_id, '', '', 
-                        :agency_name, :agency_address, :agency_phone, :agency_email,
-                        :license_number, :specializations, :languages_spoken,
-                        :years_experience, :bio, :commission_rate
+                        :user_id, :cv_file_path, '', :agency_name, :agency_email, 
+                        :years_experience, :first_name, :last_name
                     )
                 ");
                 
-                // Note: Some columns might not exist in your current schema
-                // You may need to adjust this based on your actual database structure
                 $agent_stmt->execute([
                     'user_id' => $user_id,
+                    'cv_file_path' => $cv_file_path,
                     'agency_name' => $form_data['agency_name'],
-                    'agency_address' => $form_data['agency_address'],
-                    'agency_phone' => $form_data['agency_phone'],
-                    'agency_email' => $form_data['agency_email'],
-                    'license_number' => $form_data['license_number'],
-                    'specializations' => json_encode($form_data['specializations']),
-                    'languages_spoken' => json_encode($form_data['languages_spoken']),
+                    'agency_email' => $form_data['agency_email'] ?: $form_data['email'],
                     'years_experience' => $form_data['years_experience'],
-                    'bio' => $form_data['bio'],
-                    'commission_rate' => $form_data['commission_rate']
+                    'first_name' => $form_data['first_name'],  // Added to save in agents table
+                    'last_name' => $form_data['last_name']     // Added to save in agents table
                 ]);
                 
                 $db->commit();
                 
                 $_SESSION['success_message'] = 'Agent created successfully!';
                 redirect('manage_agents.php');
-                
             }
         } catch (Exception $e) {
             $db->rollBack();
             error_log("Add agent error: " . $e->getMessage());
-            $error = 'Error creating agent. Please try again.';
+            $error = 'Error creating agent: ' . $e->getMessage();
         }
     }
 }
-
-// Available options
-$available_specializations = [
-    'residential' => 'Residential Properties',
-    'commercial' => 'Commercial Properties', 
-    'luxury' => 'Luxury Properties',
-    'rental' => 'Rental Properties',
-    'land' => 'Land & Development',
-    'investment' => 'Investment Properties',
-    'new_construction' => 'New Construction',
-    'relocation' => 'Relocation Services'
-];
-
-$available_languages = [
-    'french' => 'French',
-    'english' => 'English',
-    'spanish' => 'Spanish',
-    'italian' => 'Italian',
-    'german' => 'German',
-    'arabic' => 'Arabic',
-    'chinese' => 'Chinese',
-    'portuguese' => 'Portuguese'
-];
 ?>
 
 <!DOCTYPE html>
@@ -352,7 +347,7 @@ $available_languages = [
         <?php endif; ?>
 
         <!-- Form -->
-        <form method="POST" action="" class="needs-validation" novalidate>
+        <form method="POST" action="" class="needs-validation" enctype="multipart/form-data" novalidate>
             <div class="content-card">
                 <div class="card-body p-4">
                     <!-- Personal Information -->
@@ -410,9 +405,10 @@ $available_languages = [
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold">License Number</label>
-                                    <input type="text" class="form-control form-control-custom" name="license_number" 
-                                           value="<?= htmlspecialchars($form_data['license_number']) ?>">
+                                    <label class="form-label fw-semibold">CV/Resume</label>
+                                    <input type="file" class="form-control form-control-custom" name="agent_cv" 
+                                           accept=".pdf,.doc,.docx">
+                                    <small class="text-muted">Upload CV/resume (PDF, DOC, DOCX, max 5MB)</small>
                                 </div>
                             </div>
                         </div>
@@ -433,31 +429,10 @@ $available_languages = [
                             </div>
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold">Agency Email *</label>
+                                    <label class="form-label fw-semibold">Agency Email</label>
                                     <input type="email" class="form-control form-control-custom" name="agency_email" 
-                                           value="<?= htmlspecialchars($form_data['agency_email']) ?>" required>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Agency Address *</label>
-                            <textarea class="form-control form-control-custom" name="agency_address" rows="2" required><?= htmlspecialchars($form_data['agency_address']) ?></textarea>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold">Agency Phone *</label>
-                                    <input type="tel" class="form-control form-control-custom" name="agency_phone" 
-                                           value="<?= htmlspecialchars($form_data['agency_phone']) ?>" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold">Commission Rate (%)</label>
-                                    <input type="number" step="0.1" class="form-control form-control-custom" name="commission_rate" 
-                                           value="<?= htmlspecialchars($form_data['commission_rate']) ?>" min="0" max="10">
+                                           value="<?= htmlspecialchars($form_data['agency_email']) ?>">
+                                    <small class="text-muted">If left blank, agent's personal email will be used</small>
                                 </div>
                             </div>
                         </div>
@@ -479,32 +454,6 @@ $available_languages = [
                             <label class="form-label fw-semibold">Professional Bio</label>
                             <textarea class="form-control form-control-custom" name="bio" rows="4" 
                                       placeholder="Brief description of agent's experience and expertise..."><?= htmlspecialchars($form_data['bio']) ?></textarea>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Specializations</label>
-                            <div class="checkbox-grid">
-                                <?php foreach ($available_specializations as $key => $label): ?>
-                                    <div class="checkbox-item">
-                                        <input type="checkbox" class="form-check-input me-2" 
-                                               id="spec_<?= $key ?>" name="specializations[]" value="<?= $key ?>">
-                                        <label class="form-check-label" for="spec_<?= $key ?>"><?= $label ?></label>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Languages Spoken</label>
-                            <div class="checkbox-grid">
-                                <?php foreach ($available_languages as $key => $label): ?>
-                                    <div class="checkbox-item">
-                                        <input type="checkbox" class="form-check-input me-2" 
-                                               id="lang_<?= $key ?>" name="languages_spoken[]" value="<?= $key ?>">
-                                        <label class="form-check-label" for="lang_<?= $key ?>"><?= $label ?></label>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
                         </div>
                     </div>
 

@@ -53,6 +53,51 @@ $is_admin = ($user_role === 'admin');
         border-left: none !important;
         box-shadow: none !important;
       }
+
+      /* Carousel styles */
+      .events-carousel-container {
+        position: relative;
+        margin: 0 auto;
+        max-width: 800px;
+      }
+      .event-slide {
+        display: none;
+      }
+      .event-slide.active {
+        display: block;
+      }
+      .carousel-arrow {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        background-color: rgba(255, 255, 255, 0.8);
+        border: none;
+        padding: 10px;
+        cursor: pointer;
+        z-index: 10;
+      }
+      .carousel-prev {
+        left: 10px;
+      }
+      .carousel-next {
+        right: 10px;
+      }
+      .carousel-indicators {
+        text-align: center;
+        margin-top: 10px;
+      }
+      .indicator {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin: 0 5px;
+        background-color: #ccc;
+        border-radius: 50%;
+        cursor: pointer;
+      }
+      .indicator.active {
+        background-color: #007bff;
+      }
     </style>
 </head>
 <body>
@@ -115,66 +160,92 @@ $is_admin = ($user_role === 'admin');
                 </h2>
             </div>
 
-            <!-- All events centered (default layout) -->
-            <section class="cimalpes-event-section" style="margin: 0 auto 32px auto;">
-                <div class="cimalpes-event-images">
-                    <img src="../assets/images/event1.png" alt="Event 1 Main" class="cimalpes-event-img-main">
-                    <img src="../assets/images/event1.png" alt="Event 1 Secondary" class="cimalpes-event-img-secondary">
-                </div>
-                <div class="cimalpes-event-content">
-                    <div class="cimalpes-event-title">🏡 Open House</div>
-                    <div class="cimalpes-event-meta">
-                        <span><span class="icon">📅</span>Saturday, 10am-4pm</span>
-                        <span><span class="icon">📍</span>10 Rue Sextius Michel</span>
+            <!-- Events Carousel -->
+            <div class="events-carousel-container">
+                <div class="events-carousel">
+                    <!-- Event 1 -->
+                    <div class="event-slide active">
+                        <section class="cimalpes-event-section">
+                            <div class="cimalpes-event-images">
+                                <img src="../assets/images/event1.png" alt="Event 1 Main" class="cimalpes-event-img-main">
+                            </div>
+                            <div class="cimalpes-event-content">
+                                <div class="cimalpes-event-title">🏡 Open House</div>
+                                <div class="cimalpes-event-meta">
+                                    <span><span class="icon">📅</span>Saturday, 10am-4pm</span>
+                                    <span><span class="icon">📍</span>10 Rue Sextius Michel</span>
+                                </div>
+                                <div class="cimalpes-event-description">
+                                    <p>Join us for an exclusive open house featuring luxury apartments in the heart of Paris. Our expert agents will be available to answer all your questions.</p>
+                                </div>
+                                <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('open-house')">
+                                    <i class="fas fa-info-circle me-1"></i>See Details
+                                </button>
+                            </div>
+                        </section>
                     </div>
-                    <div class="cimalpes-event-description">
-                        <p>Join us for an exclusive open house featuring luxury apartments in the heart of Paris. Our expert agents will be available to answer all your questions.</p>
-                    </div>
-                    <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('open-house')">
-                        <i class="fas fa-info-circle me-1"></i>See Details
-                    </button>
-                </div>
-            </section>
 
-            <section class="cimalpes-event-section" style="margin: 0 auto 32px auto;">
-                <div class="cimalpes-event-images">
-                    <img src="../assets/images/event2.png" alt="Event 2 Main" class="cimalpes-event-img-main">
-                    <img src="../assets/images/event2.png" alt="Event 2 Secondary" class="cimalpes-event-img-secondary">
-                </div>
-                <div class="cimalpes-event-content">
-                    <div class="cimalpes-event-title">💼 Investment Seminar</div>
-                    <div class="cimalpes-event-meta">
-                        <span><span class="icon">📅</span>Sunday, 2pm</span>
-                        <span><span class="icon">📍</span>Main Office</span>
+                    <!-- Event 2 -->
+                    <div class="event-slide">
+                        <section class="cimalpes-event-section">
+                            <div class="cimalpes-event-images">
+                                <img src="../assets/images/event2.png" alt="Event 2 Main" class="cimalpes-event-img-main">
+                            </div>
+                            <div class="cimalpes-event-content">
+                                <div class="cimalpes-event-title">💼 Investment Seminar</div>
+                                <div class="cimalpes-event-meta">
+                                    <span><span class="icon">📅</span>Sunday, 2pm</span>
+                                    <span><span class="icon">📍</span>Main Office</span>
+                                </div>
+                                <div class="cimalpes-event-description">
+                                    <p>Learn about real estate investment opportunities with our financial experts. Perfect for first-time investors and experienced professionals.</p>
+                                </div>
+                                <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('investment-seminar')">
+                                    <i class="fas fa-info-circle me-1"></i>See Details
+                                </button>
+                            </div>
+                        </section>
                     </div>
-                    <div class="cimalpes-event-description">
-                        <p>Learn about real estate investment opportunities with our financial experts. Perfect for first-time investors and experienced professionals.</p>
-                    </div>
-                    <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('investment-seminar')">
-                        <i class="fas fa-info-circle me-1"></i>See Details
-                    </button>
-                </div>
-            </section>
 
-            <section class="cimalpes-event-section" style="margin: 0 auto 32px auto;">
-                <div class="cimalpes-event-images">
-                    <img src="../assets/images/event3.png" alt="Event 3 Main" class="cimalpes-event-img-main">
-                    <img src="../assets/images/event3.png" alt="Event 3 Secondary" class="cimalpes-event-img-secondary">
-                </div>
-                <div class="cimalpes-event-content">
-                    <div class="cimalpes-event-title">🏢 Commercial Property Tour</div>
-                    <div class="cimalpes-event-meta">
-                        <span><span class="icon">📅</span>Friday, 3pm-6pm</span>
-                        <span><span class="icon">📍</span>Business District</span>
+                    <!-- Event 3 -->
+                    <div class="event-slide">
+                        <section class="cimalpes-event-section">
+                            <div class="cimalpes-event-images">
+                                <img src="../assets/images/event3.png" alt="Event 3 Main" class="cimalpes-event-img-main">
+                            </div>
+                            <div class="cimalpes-event-content">
+                                <div class="cimalpes-event-title">🏢 Commercial Property Tour</div>
+                                <div class="cimalpes-event-meta">
+                                    <span><span class="icon">📅</span>Friday, 3pm-6pm</span>
+                                    <span><span class="icon">📍</span>Business District</span>
+                                </div>
+                                <div class="cimalpes-event-description">
+                                    <p>Discover the best commercial properties available for your business. Guided tours and expert advice from our commercial team.</p>
+                                </div>
+                                <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('commercial-tour')">
+                                    <i class="fas fa-info-circle me-1"></i>See Details
+                                </button>
+                            </div>
+                        </section>
                     </div>
-                    <div class="cimalpes-event-description">
-                        <p>Discover the best commercial properties available for your business. Guided tours and expert advice from our commercial team.</p>
-                    </div>
-                    <button class="cimalpes-event-btn btn-sm" onclick="showEventDetails('commercial-tour')">
-                        <i class="fas fa-info-circle me-1"></i>See Details
-                    </button>
+
                 </div>
-            </section>
+
+                <!-- Navigation Arrows -->
+                <button class="carousel-arrow carousel-prev" onclick="changeSlide(-1)">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="carousel-arrow carousel-next" onclick="changeSlide(1)">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+
+                <!-- Carousel Indicators -->
+                <div class="carousel-indicators">
+                    <button class="indicator active" onclick="goToSlide(0)"></button>
+                    <button class="indicator" onclick="goToSlide(1)"></button>
+                    <button class="indicator" onclick="goToSlide(2)"></button>
+                </div>
+            </div>
         </section>
 
         <!-- Quick Actions Section -->
@@ -384,6 +455,44 @@ $is_admin = ($user_role === 'admin');
                     }
                 }
             }
+
+            // Events Carousel Functionality
+            let currentSlide = 0;
+            const slides = document.querySelectorAll('.event-slide');
+            const indicators = document.querySelectorAll('.indicator');
+            const totalSlides = slides.length;
+
+            function showSlide(index) {
+                // Hide all slides
+                slides.forEach(slide => slide.classList.remove('active'));
+                indicators.forEach(indicator => indicator.classList.remove('active'));
+
+                // Show current slide
+                slides[index].classList.add('active');
+                indicators[index].classList.add('active');
+            }
+
+            function changeSlide(direction) {
+                currentSlide += direction;
+                
+                if (currentSlide >= totalSlides) {
+                    currentSlide = 0;
+                } else if (currentSlide < 0) {
+                    currentSlide = totalSlides - 1;
+                }
+                
+                showSlide(currentSlide);
+            }
+
+            function goToSlide(index) {
+                currentSlide = index;
+                showSlide(currentSlide);
+            }
+
+            // Auto-advance carousel every 5 seconds
+            setInterval(() => {
+                changeSlide(1);
+            }, 5000);
 
             // Add smooth scrolling to anchor links
             document.querySelectorAll('a[href^="#"]').forEach(anchor => {

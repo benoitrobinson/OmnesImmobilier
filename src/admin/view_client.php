@@ -167,6 +167,177 @@ try {
                         <?php endif; ?>
                     </div>
                 </div>
+
+                <!-- Add this section after the client basic information but before appointments -->
+                <div class="card mb-4">
+                    <div class="card-header pb-0 d-flex justify-content-between align-items-center">
+                        <h6>Payment Information</h6>
+                    </div>
+                    <div class="card-body px-0 pt-0 pb-2">
+                        <div class="table-responsive p-0">
+                            <table class="table align-items-center mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Card Type</th>
+                                        <th class="text-uppercase text-secondary text-xxs font-weight-bolder opacity-7 ps-2">Last 4 Digits</th>
+                                        <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Expiry Date</th>
+                                        <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Default</th>
+                                        <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Status</th>
+                                        <th class="text-center text-uppercase text-secondary text-xxs font-weight-bolder opacity-7">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php 
+                                    // Get payment information from the database - fixed table name
+                                    $paymentSql = "SELECT * FROM payment_information WHERE user_id = ?";
+                                    $paymentStmt = $db->prepare($paymentSql);
+                                    $paymentStmt->execute([$client['id']]);
+                                    $paymentMethods = $paymentStmt->fetchAll(PDO::FETCH_ASSOC);
+                                    
+                                    if (count($paymentMethods) > 0):
+                                        foreach ($paymentMethods as $payment): 
+                                    ?>
+                                        <tr>
+                                            <td>
+                                                <div class="d-flex px-3 py-1">
+                                                    <div>
+                                                        <?php if (strtolower($payment['card_type']) === 'visa'): ?>
+                                                            <i class="fab fa-cc-visa text-primary me-3 fa-2x"></i>
+                                                        <?php elseif (strtolower($payment['card_type']) === 'mastercard'): ?>
+                                                            <i class="fab fa-cc-mastercard text-danger me-3 fa-2x"></i>
+                                                        <?php elseif (strtolower($payment['card_type']) === 'amex'): ?>
+                                                            <i class="fab fa-cc-amex text-info me-3 fa-2x"></i>
+                                                        <?php else: ?>
+                                                            <i class="fas fa-credit-card text-dark me-3 fa-2x"></i>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <div class="d-flex flex-column justify-content-center">
+                                                        <h6 class="mb-0 text-sm"><?= ucfirst($payment['card_type']) ?></h6>
+                                                        <p class="text-xs text-secondary mb-0"><?= htmlspecialchars($payment['card_holder_name']) ?></p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="text-xs font-weight-bold">xxxx xxxx xxxx <?= htmlspecialchars($payment['card_last_four']) ?></span>
+                                            </td>
+                                            <td class="align-middle text-center text-sm">
+                                                <span class="text-xs font-weight-bold"><?= htmlspecialchars($payment['expiration_month']) ?>/<?= htmlspecialchars($payment['expiration_year']) ?></span>
+                                            </td>
+                                            <td class="align-middle text-center">
+                                                <?php if ($payment['is_default']): ?>
+                                                    <span class="badge badge-sm bg-success">Default</span>
+                                                <?php else: ?>
+                                                    <span class="badge badge-sm bg-secondary">No</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="align-middle text-center">
+                                                <?php if ($payment['is_verified']): ?>
+                                                    <span class="badge badge-sm bg-success">Verified</span>
+                                                <?php else: ?>
+                                                    <span class="badge badge-sm bg-warning">Unverified</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="align-middle text-center">
+                                                <?php if (!$payment['is_verified']): ?>
+                                                <form method="POST" action="" class="d-inline">
+                                                    <input type="hidden" name="action" value="verify_payment">
+                                                    <input type="hidden" name="payment_id" value="<?= $payment['id'] ?>">
+                                                    <button type="submit" class="btn btn-sm btn-success">
+                                                        <i class="fas fa-check-circle me-1"></i>Verify Card
+                                                    </button>
+                                                </form>
+                                                <?php else: ?>
+                                                    <button class="btn btn-sm btn-outline-success" disabled>
+                                                        <i class="fas fa-check-double me-1"></i>Verified
+                                                    </button>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php 
+                                        endforeach; 
+                                    else: 
+                                    ?>
+                                        <tr>
+                                            <td colspan="6" class="text-center py-4">
+                                                <p class="text-sm text-secondary mb-0">No payment methods found</p>
+                                            </td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing Address Section -->
+                <?php if (count($paymentMethods) > 0): ?>
+                <div class="card mb-4">
+                    <div class="card-header pb-0">
+                        <h6>Billing Address</h6>
+                    </div>
+                    <div class="card-body p-4">
+                        <?php 
+                        // Get default payment method's billing information
+                        $defaultPayment = null;
+                        foreach ($paymentMethods as $method) {
+                            if ($method['is_default']) {
+                                $defaultPayment = $method;
+                                break;
+                            }
+                        }
+                        // If no default is set, use the first one
+                        if (!$defaultPayment && !empty($paymentMethods)) {
+                            $defaultPayment = $paymentMethods[0];
+                        }
+                        
+                        if ($defaultPayment):
+                        ?>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="text-sm mb-1"><strong>Address:</strong> <?= htmlspecialchars($defaultPayment['billing_address_line1']) ?></p>
+                                <p class="text-sm mb-1"><strong>City:</strong> <?= htmlspecialchars($defaultPayment['billing_city']) ?></p>
+                                <p class="text-sm mb-1"><strong>State:</strong> <?= htmlspecialchars($defaultPayment['billing_state']) ?></p>
+                                <p class="text-sm mb-1"><strong>Postal Code:</strong> <?= htmlspecialchars($defaultPayment['billing_postal_code']) ?></p>
+                                <p class="text-sm mb-1"><strong>Country:</strong> <?= htmlspecialchars($defaultPayment['billing_country']) ?></p>
+                            </div>
+                        </div>
+                        <?php else: ?>
+                        <p class="text-center text-muted my-3">No billing information available</p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Transaction History Section - No specific table in your schema for this, 
+                     this section can be added once you create a payments/transactions table -->
+
+                <!-- Add this PHP code at the beginning of the file to handle verify payment action -->
+                <?php
+                // Place this near the beginning of the file, where other form handling occurs
+                if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'verify_payment') {
+                    $paymentId = isset($_POST['payment_id']) ? (int)$_POST['payment_id'] : 0;
+                    
+                    if ($paymentId > 0) {
+                        try {
+                            $verifyStmt = $db->prepare("
+                                UPDATE payment_information 
+                                SET is_verified = 1, 
+                                    updated_at = NOW() 
+                                WHERE id = ? AND user_id = ?
+                            ");
+                            $success = $verifyStmt->execute([$paymentId, $client['id']]);
+                            
+                            if ($success) {
+                                // Add success message
+                                $successMsg = "Payment card successfully verified!";
+                            }
+                        } catch (Exception $e) {
+                            // Add error message
+                            $errorMsg = "Error verifying payment card: " . $e->getMessage();
+                        }
+                    }
+                }
+                ?>
             </div>
         </div>
     </div>

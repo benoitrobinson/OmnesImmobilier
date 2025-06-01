@@ -22,9 +22,11 @@ if (!$property_id) {
 
 // Get property details with agent information
 try {
-    $query = "SELECT p.*, u.first_name, u.last_name, u.email as agent_email, u.phone as agent_phone
+    $query = "SELECT p.*, u.first_name, u.last_name, u.email as agent_email, u.phone as agent_phone,
+              a.cv_file_path
               FROM properties p 
               LEFT JOIN users u ON p.agent_id = u.id 
+              LEFT JOIN agents a ON p.agent_id = a.user_id
               WHERE p.id = :property_id";
     $stmt = $pdo->prepare($query);
     $stmt->execute(['property_id' => $property_id]);
@@ -32,6 +34,18 @@ try {
     
     if (!$property) {
         $error = "Property not found.";
+    } else {
+        // If agent exists but CV is missing, check directly from agents table
+        if (!empty($property['agent_id']) && empty($property['cv_file_path'])) {
+            $cv_query = "SELECT cv_file_path FROM agents WHERE user_id = :agent_id";
+            $cv_stmt = $pdo->prepare($cv_query);
+            $cv_stmt->execute(['agent_id' => $property['agent_id']]);
+            $cv_result = $cv_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cv_result && !empty($cv_result['cv_file_path'])) {
+                $property['cv_file_path'] = $cv_result['cv_file_path'];
+            }
+        }
     }
 } catch (Exception $e) {
     error_log("Property fetch error: " . $e->getMessage());
@@ -288,23 +302,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                             <?php if ($property['first_name']): ?>
                                 <div class="agent-info">
                                     <h6><i class="fas fa-user-tie me-2"></i>Your Agent</h6>
-                                    <div class="d-flex align-items-center">
+                                    <div class="d-flex align-items-start">
+                                        <!-- Agent Avatar -->
                                         <div class="me-3">
-                                            <div style="width: 50px; height: 50px; background: #d4af37; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                            <div style="width: 60px; height: 60px; background: #d4af37; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;">
                                                 <?= strtoupper(substr($property['first_name'], 0, 1) . substr($property['last_name'], 0, 1)) ?>
                                             </div>
                                         </div>
-                                        <div>
-                                            <div class="fw-semibold"><?= htmlspecialchars($property['first_name'] . ' ' . $property['last_name']) ?></div>
-                                            <?php if ($property['agent_email']): ?>
-                                                <small class="text-muted">
-                                                    <i class="fas fa-envelope me-1"></i><?= htmlspecialchars($property['agent_email']) ?>
-                                                </small>
-                                            <?php endif; ?>
-                                            <?php if ($property['agent_phone']): ?>
-                                                <br><small class="text-muted">
-                                                    <i class="fas fa-phone me-1"></i><?= htmlspecialchars($property['agent_phone']) ?>
-                                                </small>
+                                        
+                                        <!-- Agent Details -->
+                                        <div class="flex-grow-1">
+                                            <div class="fw-bold fs-5 mb-1"><?= htmlspecialchars($property['first_name'] . ' ' . $property['last_name']) ?></div>
+                                            
+                                            <!-- Agent Contact Info -->
+                                            <div class="mb-2">
+                                                <?php if ($property['agent_email']): ?>
+                                                    <div class="mb-1">
+                                                        <i class="fas fa-envelope me-2 text-muted"></i>
+                                                        <span><?= htmlspecialchars($property['agent_email']) ?></span>
+                                                    </div>
+                                                <?php endif; ?>
+                                                
+                                                <?php if ($property['agent_phone']): ?>
+                                                    <div>
+                                                        <i class="fas fa-phone me-2 text-muted"></i>
+                                                        <span><?= htmlspecialchars($property['agent_phone']) ?></span>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            
+                                            <!-- View CV Button - Always show but conditionally enable -->
+                                            <button type="button" class="btn btn-outline-primary btn-sm" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#agentCVModal"
+                                                    <?= empty($property['cv_file_path']) ? 'disabled' : '' ?>>
+                                                <i class="fas fa-file-alt me-1"></i> 
+                                                <?= empty($property['cv_file_path']) ? 'CV Not Available' : 'View CV' ?>
+                                            </button>
+                                            
+                                            <!-- Debug information - remove in production -->
+                                            <?php if (isset($_GET['debug'])): ?>
+                                                <div class="mt-2 p-2 bg-light rounded">
+                                                    <small>Debug: CV Path = "<?= htmlspecialchars($property['cv_file_path'] ?? 'null') ?>"</small>
+                                                </div>
                                             <?php endif; ?>
                                         </div>
                                     </div>
@@ -360,6 +400,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             </div>
         </div>
     </div>
+    
+    <!-- CV Modal -->
+    <?php if (!empty($property['cv_file_path'])): ?>
+    <div class="modal fade" id="agentCVModal" tabindex="-1" aria-labelledby="agentCVModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="agentCVModalLabel">
+                        <i class="fas fa-file-alt me-2"></i>
+                        <?= htmlspecialchars($property['first_name'] . ' ' . $property['last_name']) ?>'s CV
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <?php
+                    $file_ext = strtolower(pathinfo($property['cv_file_path'], PATHINFO_EXTENSION));
+                    $cv_path = '../' . $property['cv_file_path']; // Make sure we have the correct path
+                    
+                    if ($file_ext == 'pdf' && file_exists($cv_path)): ?>
+                        <!-- PDF Viewer - Fixed path -->
+                        <div class="ratio ratio-16x9" style="min-height: 600px;">
+                            <iframe src="../<?= $property['cv_file_path'] ?>" 
+                                    allowfullscreen allow="fullscreen"
+                                    class="w-100 h-100 border-0"></iframe>
+                        </div>
+                    <?php else: ?>
+                        <div class="text-center p-5">
+                            <i class="fas fa-file-alt fa-3x text-muted mb-3"></i>
+                            <p>CV file not found or cannot be previewed directly.</p>
+                            <?php if (file_exists($cv_path)): ?>
+                                <a href="../<?= $property['cv_file_path'] ?>" 
+                                   class="btn btn-primary" target="_blank">
+                                    <i class="fas fa-download me-2"></i>Download CV
+                                </a>
+                            <?php else: ?>
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    CV file not found at expected path: <?= htmlspecialchars($property['cv_file_path']) ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <!-- Debug info -->
+                    <?php if (isset($_GET['debug'])): ?>
+                    <div class="p-3 bg-light border-top">
+                        <h6>Debug Information:</h6>
+                        <ul>
+                            <li>CV path: <?= htmlspecialchars($property['cv_file_path'] ?? 'Not set') ?></li>
+                            <li>Full path: <?= htmlspecialchars($cv_path ?? 'Not available') ?></li>
+                            <li>File exists: <?= file_exists($cv_path) ? 'Yes' : 'No' ?></li>
+                            <li>File extension: <?= $file_ext ?></li>
+                        </ul>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <?php if (file_exists($cv_path)): ?>
+                    <a href="../<?= $property['cv_file_path'] ?>" 
+                       class="btn btn-primary" target="_blank" download>
+                        <i class="fas fa-download me-2"></i>Download CV
+                    </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
