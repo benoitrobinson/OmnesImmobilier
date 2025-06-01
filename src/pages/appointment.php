@@ -271,6 +271,145 @@ $appointments = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <?php endif; ?>
   </div>
 
+  <?php
+  // First, ensure the required columns exist in agent_availability table
+  function ensureAgentAvailabilityColumns($pdo) {
+      try {
+          // Check if columns exist and add them if they don't
+          $columns_to_add = [
+              'specific_date' => 'DATE NULL',
+              'user_id' => 'INT NULL', 
+              'notes' => 'TEXT NULL'
+          ];
+          
+          foreach ($columns_to_add as $column => $definition) {
+              try {
+                  $pdo->exec("ALTER TABLE agent_availability ADD COLUMN $column $definition");
+              } catch (PDOException $e) {
+                  // Column might already exist, continue
+              }
+          }
+          
+          // Update existing records to have is_available = 1 for general availability
+          $pdo->exec("UPDATE agent_availability SET is_available = 1 WHERE specific_date IS NULL AND is_available IS NULL");
+          
+      } catch (PDOException $e) {
+          // Handle any other errors silently
+      }
+  }
+  
+  // Sync appointments with agent_availability table
+  function syncAppointmentsWithAvailability($pdo) {
+      // First ensure columns exist
+      ensureAgentAvailabilityColumns($pdo);
+      
+      // Get all scheduled appointments that don't have corresponding agent_availability records
+      $sync_stmt = $pdo->prepare("
+          SELECT a.id, a.agent_id, a.client_id, a.appointment_date
+          FROM appointments a
+          WHERE a.status = 'scheduled' 
+          AND a.appointment_date > NOW()
+          AND NOT EXISTS (
+              SELECT 1 FROM agent_availability aa 
+              WHERE aa.agent_id = a.agent_id 
+              AND aa.specific_date = DATE(a.appointment_date)
+              AND aa.start_time = TIME(a.appointment_date)
+              AND aa.is_available = 0
+          )
+      ");
+      $sync_stmt->execute();
+      $appointments_to_sync = $sync_stmt->fetchAll(PDO::FETCH_ASSOC);
+      
+      foreach ($appointments_to_sync as $appt) {
+          $appointment_date = new DateTime($appt['appointment_date']);
+          $day_of_week = $appointment_date->format('l'); // Monday, Tuesday, etc.
+          $specific_date = $appointment_date->format('Y-m-d');
+          $start_time = $appointment_date->format('H:i:s');
+          
+          // Calculate end time (30 minutes later)
+          $end_time = clone $appointment_date;
+          $end_time->add(new DateInterval('PT30M'));
+          $end_time_str = $end_time->format('H:i:s');
+          
+          // Insert into agent_availability
+          try {
+              $insert_stmt = $pdo->prepare("
+                  INSERT INTO agent_availability 
+                  (agent_id, day_of_week, specific_date, start_time, end_time, user_id, is_available, availability_type, notes)
+                  VALUES (?, ?, ?, ?, ?, ?, 0, 'exception', 'Appointment booking')
+              ");
+              $insert_stmt->execute([
+                  $appt['agent_id'],
+                  $day_of_week,
+                  $specific_date,
+                  $start_time,
+                  $end_time_str,
+                  $appt['client_id']
+              ]);
+          } catch (PDOException $e) {
+              // If availability_type column doesn't exist, try without it
+              try {
+                  $insert_stmt = $pdo->prepare("
+                      INSERT INTO agent_availability 
+                      (agent_id, day_of_week, specific_date, start_time, end_time, user_id, is_available, notes)
+                      VALUES (?, ?, ?, ?, ?, ?, 0, 'Appointment booking')
+                  ");
+                  $insert_stmt->execute([
+                      $appt['agent_id'],
+                      $day_of_week,
+                      $specific_date,
+                      $start_time,
+                      $end_time_str,
+                      $appt['client_id']
+                  ]);
+              } catch (PDOException $e2) {
+                  // If that fails too, try minimal insert
+                  $insert_stmt = $pdo->prepare("
+                      INSERT INTO agent_availability 
+                      (agent_id, day_of_week, specific_date, start_time, end_time, is_available)
+                      VALUES (?, ?, ?, ?, ?, 0)
+                  ");
+                  $insert_stmt->execute([
+                      $appt['agent_id'],
+                      $day_of_week,
+                      $specific_date,
+                      $start_time,
+                      $end_time_str
+                  ]);
+              }
+          }
+      }
+      
+      // Clean up cancelled appointments from agent_availability
+      try {
+          $cleanup_stmt = $pdo->prepare("
+              DELETE aa FROM agent_availability aa
+              WHERE aa.is_available = 0 
+              AND aa.specific_date IS NOT NULL
+              AND aa.specific_date < CURDATE()
+              AND NOT EXISTS (
+                  SELECT 1 FROM appointments a 
+                  WHERE a.agent_id = aa.agent_id 
+                  AND DATE(a.appointment_date) = aa.specific_date
+                  AND TIME(a.appointment_date) = aa.start_time
+                  AND a.status = 'scheduled'
+              )
+          ");
+          $cleanup_stmt->execute();
+      } catch (PDOException $e) {
+          // Handle cleanup error silently
+      }
+  }
+  
+  // Run the sync
+  try {
+      syncAppointmentsWithAvailability($pdo);
+  } catch (PDOException $e) {
+      // Handle sync error silently for now
+      error_log("Appointment sync error: " . $e->getMessage());
+  }
+  ?>
+
   <script>
     function cancelAppointment(id, btn) {
       if(!confirm('Are you sure you want to cancel this appointment?')) return;

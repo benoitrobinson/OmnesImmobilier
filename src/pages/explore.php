@@ -48,7 +48,150 @@ if (isset($_SESSION['user_id']) && $is_client) {
     $favoritesStmt->execute([$_SESSION['user_id']]);
     $userFavorites = $favoritesStmt->fetchAll(PDO::FETCH_COLUMN);
 }
+
+// Add this function before the existing appointment booking logic
+function getAvailableTimeSlots($pdo, $agentId, $date, $duration = 30) {
+    $dayOfWeek = date('l', strtotime($date));
+    
+    // Get general availability for the day
+    $availStmt = $pdo->prepare("
+        SELECT start_time, end_time 
+        FROM agent_availability 
+        WHERE agent_id = ? AND day_of_week = ? AND specific_date IS NULL AND is_available = 1
+    ");
+    $availStmt->execute([$agentId, $dayOfWeek]);
+    $availability = $availStmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$availability) return [];
+    
+    // Get blocked time slots for this specific date (is_available = 0)
+    $blockedStmt = $pdo->prepare("
+        SELECT start_time, end_time 
+        FROM agent_availability 
+        WHERE agent_id = ? AND specific_date = ? AND is_available = 0
+        ORDER BY start_time
+    ");
+    $blockedStmt->execute([$agentId, $date]);
+    $blockedSlots = $blockedStmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Generate time slots
+    $slots = [];
+    $current = new DateTime($availability['start_time']);
+    $end = new DateTime($availability['end_time']);
+    
+    while ($current < $end) {
+        $slotEnd = clone $current;
+        $slotEnd->add(new DateInterval('PT' . $duration . 'M'));
+        
+        if ($slotEnd <= $end) {
+            $isAvailable = true;
+            $currentTime = $current->format('H:i:s');
+            $slotEndTime = $slotEnd->format('H:i:s');
+            
+            // Check if this slot conflicts with any blocked slots
+            foreach ($blockedSlots as $blocked) {
+                $blockedStart = new DateTime($blocked['start_time']);
+                $blockedEnd = new DateTime($blocked['end_time']);
+                
+                // Check for overlap
+                if (($current < $blockedEnd) && ($slotEnd > $blockedStart)) {
+                    $isAvailable = false;
+                    break;
+                }
+            }
+            
+            if ($isAvailable) {
+                $slots[] = $current->format('H:i');
+            }
+        }
+        
+        $current->add(new DateInterval('PT30M')); // 30-minute intervals
+    }
+    
+    return $slots;
+}
+
+// Update the appointment booking AJAX handler section
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'book_appointment') {
+    header('Content-Type: application/json');
+    
+    if (!isLoggedIn()) {
+        echo json_encode(['success' => false, 'message' => 'Please log in to book an appointment']);
+        exit;
+    }
+    
+    $agentId = (int)$_POST['agent_id'];
+    $propertyId = (int)$_POST['property_id'];
+    $date = $_POST['date'];
+    $time = $_POST['time'];
+    
+    // Validate inputs
+    if (!$agentId || !$propertyId || !$date || !$time) {
+        echo json_encode(['success' => false, 'message' => 'Missing required information']);
+        exit;
+    }
+    
+    // Check if the time slot is still available
+    $availableSlots = getAvailableTimeSlots($pdo, $agentId, $date);
+    if (!in_array($time, $availableSlots)) {
+        echo json_encode(['success' => false, 'message' => 'This time slot is no longer available']);
+        exit;
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Create appointment in appointments table
+        $appointmentDate = $date . ' ' . $time . ':00';
+        $stmt = $pdo->prepare("
+            INSERT INTO appointments (client_id, agent_id, property_id, appointment_date, status, location, created_at) 
+            VALUES (?, ?, ?, ?, 'scheduled', 
+                    (SELECT CONCAT(address_line1, ', ', city) FROM properties WHERE id = ?), 
+                    NOW())
+        ");
+        $stmt->execute([$_SESSION['user_id'], $agentId, $propertyId, $appointmentDate, $propertyId]);
+        $appointmentId = $pdo->lastInsertId();
+        
+        // Create corresponding unavailable slot in agent_availability
+        $appointmentDateTime = new DateTime($appointmentDate);
+        $dayOfWeek = $appointmentDateTime->format('l');
+        $specificDate = $appointmentDateTime->format('Y-m-d');
+        $startTime = $appointmentDateTime->format('H:i:s');
+        
+        // Calculate end time (30 minutes later)
+        $endDateTime = clone $appointmentDateTime;
+        $endDateTime->add(new DateInterval('PT30M'));
+        $endTime = $endDateTime->format('H:i:s');
+        
+        // Insert unavailable slot
+        $availStmt = $pdo->prepare("
+            INSERT INTO agent_availability 
+            (agent_id, day_of_week, specific_date, start_time, end_time, user_id, is_available, availability_type, notes)
+            VALUES (?, ?, ?, ?, ?, ?, 0, 'exception', ?)
+        ");
+        $availStmt->execute([
+            $agentId,
+            $dayOfWeek,
+            $specificDate,
+            $startTime,
+            $endTime,
+            $_SESSION['user_id'],
+            'Appointment #' . $appointmentId
+        ]);
+        
+        $pdo->commit();
+        echo json_encode(['success' => true, 'message' => 'Appointment booked successfully!']);
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['success' => false, 'message' => 'Failed to book appointment: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// Update the JavaScript section for fetching available times
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -262,7 +405,8 @@ if (isset($_SESSION['user_id']) && $is_client) {
                 <a href="explore.php" class="btn btn-primary">View All Properties</a>
             </div>
         <?php else: ?>
-            <div class="row">                <?php foreach($properties as $p): 
+            <div class="row">
+                <?php foreach($properties as $p): 
                     // Get images from database or use fallback
                     $images = [];
                     if (!empty($p['images'])) {
@@ -320,7 +464,8 @@ if (isset($_SESSION['user_id']) && $is_client) {
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <span class="h5 text-primary mb-0">€<?= number_format($p['price'], 0, ',', ' ') ?></span>
                                         <span class="badge bg-secondary"><?= ucfirst($p['property_type']) ?></span>
-                                    </div>                                    <div class="d-grid gap-2">
+                                    </div>
+                                    <div class="d-grid gap-2">
                                         <button type="button" 
                                                 class="btn btn-outline-primary"
                                                 data-bs-toggle="modal"
@@ -373,8 +518,6 @@ if (isset($_SESSION['user_id']) && $is_client) {
     </div>
 </div>
 
-
-
 <script>
 // Pass PHP data to JavaScript with explicit boolean values
 const userLoggedIn = <?= isset($_SESSION['user_id']) ? 'true' : 'false' ?>;
@@ -393,6 +536,82 @@ console.log("User session data:", {
     isAdmin: <?= $is_admin ? 'true' : 'false' ?>,
     isClient: <?= $is_client ? 'true' : 'false' ?>
 });
+
+// Update the fetchAvailableTimes function to use appointments.php
+function fetchAvailableTimes(agentId, date) {
+    fetch('../ajax/appointments.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=get_available_times&agent_id=${agentId}&date=${date}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        const timeSelect = document.getElementById('appointment_time');
+        timeSelect.innerHTML = '<option value="">Select a time</option>';
+        
+        if (data.success && data.times.length > 0) {
+            data.times.forEach(time => {
+                const option = document.createElement('option');
+                option.value = time;
+                option.textContent = formatTime(time);
+                timeSelect.appendChild(option);
+            });
+            timeSelect.disabled = false;
+        } else {
+            timeSelect.innerHTML = '<option value="">No available times</option>';
+            timeSelect.disabled = true;
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching times:', error);
+        const timeSelect = document.getElementById('appointment_time');
+        timeSelect.innerHTML = '<option value="">Error loading times</option>';
+        timeSelect.disabled = true;
+    });
+}
+
+// Function to format time (add this if it doesn't exist in explore.js)
+function formatTime(time) {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+}
+
+// Update booking function to use appointments.php
+function bookAppointment(propertyId, agentId) {
+    const date = document.getElementById('appointment_date').value;
+    const time = document.getElementById('appointment_time').value;
+    
+    if (!date || !time) {
+        alert('Please select both date and time');
+        return;
+    }
+    
+    fetch('../ajax/appointments.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `action=book_appointment&agent_id=${agentId}&property_id=${propertyId}&date=${date}&time=${time}`
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Appointment booked successfully!');
+            // Close modal and refresh available times
+            const modal = bootstrap.Modal.getInstance(document.getElementById('propertyModal'));
+            modal.hide();
+            // Optionally refresh the times to show the slot is no longer available
+            fetchAvailableTimes(agentId, date);
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error booking appointment:', error);
+        alert('Failed to book appointment. Please try again.');
+    });
+}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="../assets/js/explore.js"></script>

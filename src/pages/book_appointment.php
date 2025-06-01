@@ -40,7 +40,6 @@ try {
 
 // Handle AJAX request for available times
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_times') {
-    // Clear any previous output to ensure clean JSON
     while (ob_get_level()) {
         ob_end_clean();
     }
@@ -59,67 +58,60 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_times') {
         $day_of_week = date('l', strtotime($date));
         $available_times = [];
         
-        // Combined query: get both weekly schedule (NULL specific_date) AND specific date overrides
-        $query = "SELECT * FROM agent_availability 
-                  WHERE agent_id = ? 
-                  AND is_available = 1
-                  AND (
-                      (day_of_week = ? AND specific_date IS NULL) 
-                      OR specific_date = ?
-                  )
-                  ORDER BY specific_date DESC"; // Specific dates override weekly schedule
+        // Get general availability for this day (is_available = 1, no specific_date)
+        $query = "SELECT start_time, end_time FROM agent_availability 
+                 WHERE agent_id = ? AND day_of_week = ? AND specific_date IS NULL AND is_available = 1";
         
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$agent_id, $day_of_week, $date]);
-        $slots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->execute([$agent_id, $day_of_week]);
+        $general_availability = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        // Process slots to generate available time slots
-        foreach ($slots as $slot) {
-            if (!$slot['start_time'] || !$slot['end_time']) {
-                continue;
-            }
-            
-            $start_time = $slot['start_time'];
-            $end_time = $slot['end_time'];
-            
-            // Convert to timestamps for easier manipulation
-            $current = strtotime($start_time);
-            $end = strtotime($end_time);
-            
-            // Generate 30-minute time slots
-            while ($current < $end) {
-                $time_slot = date('H:i:s', $current);
-                $time_display = date('g:i A', $current);
-                
-                // Check if this time slot is already booked
-                $conflict_query = "SELECT COUNT(*) as count FROM appointments 
-                                  WHERE agent_id = ? 
-                                  AND DATE(appointment_date) = ? 
-                                  AND TIME(appointment_date) = ?
-                                  AND status IN ('pending', 'confirmed', 'scheduled')";
-                $conflict_stmt = $pdo->prepare($conflict_query);
-                $conflict_stmt->execute([$agent_id, $date, $time_slot]);
-                $conflict = $conflict_stmt->fetch(PDO::FETCH_ASSOC);
-                
-                // Add to available times if not conflicting
-                if ($conflict['count'] == 0) {
-                    $available_times[] = [
-                        'value' => $time_slot,
-                        'display' => $time_display
-                    ];
-                }
-                
-                $current += 1800; // Add 30 minutes
-            }
+        if (!$general_availability) {
+            echo json_encode([]);
+            exit;
         }
         
-        // Return the available time slots
+        // Generate time slots from general availability
+        $start = strtotime($general_availability['start_time']);
+        $end = strtotime($general_availability['end_time']);
+        $current = $start;
+        
+        while ($current < $end) {
+            $time_slot = date('H:i:s', $current);
+            $time_display = date('g:i A', $current);
+            
+            // Check if this specific time is blocked (is_available = 0) for this specific date
+            $blocked_query = "SELECT COUNT(*) FROM agent_availability 
+                             WHERE agent_id = ? AND specific_date = ? AND is_available = 0 
+                             AND start_time <= ? AND end_time > ?";
+            $blocked_stmt = $pdo->prepare($blocked_query);
+            $blocked_stmt->execute([$agent_id, $date, $time_slot, $time_slot]);
+            $is_blocked = $blocked_stmt->fetchColumn() > 0;
+            
+            // Check existing appointments
+            $appt_query = "SELECT COUNT(*) FROM appointments 
+                          WHERE agent_id = ? AND DATE(appointment_date) = ? 
+                          AND TIME(appointment_date) = ? AND status = 'scheduled'";
+            $appt_stmt = $pdo->prepare($appt_query);
+            $appt_stmt->execute([$agent_id, $date, $time_slot]);
+            $has_appointment = $appt_stmt->fetchColumn() > 0;
+            
+            // Only show time if not blocked and no existing appointment
+            if (!$is_blocked && !$has_appointment) {
+                $available_times[] = [
+                    'value' => $time_slot,
+                    'display' => $time_display
+                ];
+            }
+            
+            $current += 1800; // Add 30 minutes
+        }
+        
         echo json_encode($available_times);
         exit;
         
     } catch (Exception $e) {
-        error_log("Error in availability check: " . $e->getMessage());
-        echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+        echo json_encode(['error' => 'Database error']);
         exit;
     }
 }
@@ -142,7 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
             $error = "Please select a future date and time.";
         } else {
             try {
-                // Insert appointment using existing table structure
+                $pdo->beginTransaction();
+                
+                // Insert appointment
                 $insert_query = "INSERT INTO appointments (client_id, agent_id, property_id, appointment_date, status, location) 
                                 VALUES (:client_id, :agent_id, :property_id, :appointment_date, 'scheduled', :location)";
                 $insert_stmt = $pdo->prepare($insert_query);
@@ -154,10 +148,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
                     'location' => $location
                 ]);
                 
+                // Block the time slot
+                $appointment_datetime_obj = new DateTime($appointment_datetime);
+                $day_of_week = $appointment_datetime_obj->format('l');
+                $specific_date = $appointment_datetime_obj->format('Y-m-d');
+                $start_time = $appointment_datetime_obj->format('H:i:s');
+                $end_datetime = clone $appointment_datetime_obj;
+                $end_datetime->add(new DateInterval('PT30M'));
+                $end_time = $end_datetime->format('H:i:s');
+                
+                $block_query = "INSERT INTO agent_availability 
+                               (agent_id, day_of_week, specific_date, start_time, end_time, is_available, availability_type)
+                               VALUES (?, ?, ?, ?, ?, 0, 'exception')";
+                $block_stmt = $pdo->prepare($block_query);
+                $block_stmt->execute([
+                    $property['agent_id'],
+                    $day_of_week,
+                    $specific_date,
+                    $start_time,
+                    $end_time
+                ]);
+                
+                $pdo->commit();
                 $success = "Your appointment request has been submitted successfully! The agent will contact you to confirm.";
             } catch (Exception $e) {
+                $pdo->rollBack();
                 error_log("Appointment booking error: " . $e->getMessage());
-                $error = "Error booking appointment. Please try again. Details: " . $e->getMessage();
+                $error = "Error booking appointment. Please try again.";
             }
         }
     }
@@ -370,7 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$error) {
         timeHelp.textContent = 'Loading available times...';
         timeHelp.className = 'text-info';
         
-        // Use the dedicated test file instead
+        // Use the test file for now while we debug
         const timestamp = new Date().getTime();
         const url = `test_availability.php?date=${selectedDate}&agent_id=${agentId}&_=${timestamp}`;
         
